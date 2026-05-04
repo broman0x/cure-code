@@ -2,42 +2,44 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
-	"github.com/broman0x/forgeai-cli/internal/ai"
-	"github.com/broman0x/forgeai-cli/internal/config"
-	"github.com/broman0x/forgeai-cli/internal/lang"
-	"github.com/broman0x/forgeai-cli/internal/ui"
+	"github.com/broman0x/forge-code/internal/agent"
+	"github.com/broman0x/forge-code/internal/ai"
+	"github.com/broman0x/forge-code/internal/config"
+	"github.com/broman0x/forge-code/internal/ui"
+	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
+// [EN] Version is the current version of Forge Code.
+// [ID] Version adalah versi Forge Code saat ini.
 const Version = "1.0.1"
 
 var (
-	cfgFile         string
-	noBanner        bool
-	doInstall       bool
-	doUninstall     bool
-	showVersion     bool
-	currentProvider ai.Provider
+	cfgFile     string
+	doInstall   bool
+	doUninstall bool
+	showVersion bool
+	resumeID    string
+	yoloMode    bool
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "forgeai",
-	Short: "Professional AI CLI",
+	Use:   "forgecode",
+	Short: "AI Coding Agent by bromanprjkt",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
-			fmt.Printf("ForgeAI CLI v%s\n", Version)
-			fmt.Println("AI-Powered Development Assistant")
-			fmt.Println("by bromanprjkt")
+			fmt.Printf("Forge Code v%s\n", Version)
+			fmt.Println("AI Coding Agent by bromanprjkt")
 			return nil
 		}
 		if doInstall {
@@ -46,13 +48,18 @@ var rootCmd = &cobra.Command{
 		if doUninstall {
 			return runSelfUninstall()
 		}
+		if resumeID != "" {
+			return runREPL(resumeID)
+		}
 		if len(args) > 0 {
 			return runOneShot(strings.Join(args, " "))
 		}
-		return runMainMenu()
+		return runREPL("")
 	},
 }
 
+// [EN] Execute adds all child commands to the root command and sets flags appropriately.
+// [ID] Execute menambahkan semua sub-perintah ke perintah akar dan mengatur flag dengan sesuai.
 func Execute() error {
 	return rootCmd.Execute()
 }
@@ -60,633 +67,564 @@ func Execute() error {
 func init() {
 	cobra.OnInitialize(initConfig)
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file")
-	rootCmd.PersistentFlags().BoolVar(&noBanner, "no-banner", false, "disable banner")
-	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version information")
-	rootCmd.Flags().BoolVar(&doInstall, "install", false, "install forge to PATH")
-	rootCmd.Flags().BoolVar(&doUninstall, "uninstall", false, "uninstall forge from PATH")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
+	rootCmd.Flags().BoolVar(&doInstall, "install", false, "install to PATH")
+	rootCmd.Flags().BoolVar(&doUninstall, "uninstall", false, "uninstall from PATH")
+	rootCmd.Flags().StringVar(&resumeID, "resume", "", "resume a saved session by ID")
+	rootCmd.Flags().BoolVar(&yoloMode, "yolo", false, "skip tool execution confirmations")
 	cobra.MousetrapHelpText = ""
 }
 
-func runMainMenu() error {
+func initConfig() {
+
+	godotenv.Load()
+
+	godotenv.Load(config.GetEnvPath())
+}
+
+func createAgent() (*agent.Agent, error) {
+	cfg := config.Load()
+
+	var provider agent.FunctionCallingProvider
+	var err error
+
+	if cfg.LastProvider != "" && cfg.LastModel != "" {
+		provider, err = ai.CreateFCProvider(cfg.LastProvider, cfg.LastModel)
+		if err == nil {
+			a := agent.NewAgent(provider, mustGetwd())
+			a.YOLO = yoloMode
+			return a, nil
+		}
+	}
+
+	providerOrder := []struct {
+		name  string
+		model string
+	}{
+		{"gemini", "gemini-2.5-flash"},
+		{"openai", "gpt-4o-mini"},
+		{"claude", "claude-sonnet-4-20250514"},
+		{"nvidia", "nvidia/nemotron-3-super-120b-a12b"},
+		{"groq", "llama-3.1-70b-versatile"},
+		{"deepseek", "deepseek-coder"},
+		{"ollama", "llama3"},
+	}
+
+	for _, p := range providerOrder {
+		provider, err = ai.CreateFCProvider(p.name, p.model)
+		if err == nil {
+			return agent.NewAgent(provider, mustGetwd()), nil
+		}
+	}
+
+	return nil, fmt.Errorf("no AI provider available. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
+}
+
+// [EN] runREPL starts the interactive Read-Eval-Print Loop for the AI agent.
+// [ID] runREPL memulai loop interaktif Read-Eval-Print untuk agen AI.
+func runREPL(sessionID string) error {
 	config.ResetCache()
 	cfg := config.Load()
 
 	if cfg.FirstRun {
-		if err := runFirstTimeSetup(); err != nil {
+		if err := runQuickSetup(); err != nil {
 			return err
 		}
 		config.ResetCache()
-		cfg = config.Load()
-	} else {
 	}
 
-	lang.SetLanguage(cfg.Language)
+	ag, err := createAgent()
+	if err != nil {
+		return runProviderSetup(err)
+	}
 
-	exePath, _ := os.Executable()
-	installDir := filepath.Join(os.Getenv("LocalAppData"), "ForgeAI")
-	installedPath := filepath.Join(installDir, "forge.exe")
+	if sessionID != "" {
+		configDir := filepath.Dir(config.GetConfigPath())
+		history, tasks, err := agent.LoadSession(sessionID, configDir)
+		if err != nil {
+			color.Red("  Error loading session '%s': %v\n", sessionID, err)
+		} else {
+			ag.History = history
+			ag.Tasks = tasks
+			color.Green("  [OK] Resumed session: %s\n", sessionID)
+		}
+	}
 
-	if runtime.GOOS == "windows" && exePath != installedPath {
-		fmt.Println()
-		color.Yellow("  ⚠ ForgeAI belum ter-install ke sistem")
-		color.Cyan("  Ingin install sekarang agar bisa dipanggil dari mana saja?")
-		fmt.Println()
-		fmt.Print("  Install ke PATH? [Y/n]: ")
+	showBanner(ag)
 
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			response := strings.ToLower(strings.TrimSpace(scanner.Text()))
-			if response == "" || response == "y" || response == "yes" {
-				if err := runSelfInstall(); err != nil {
-					color.Red("  Install failed: %v", err)
-				}
-				return nil
+	cActive := color.New(color.FgHiCyan, color.Bold).SprintFunc()
+	cSubtle := color.New(color.FgHiBlack).SprintFunc()
+
+	fmt.Printf("  %s %s\n", cActive("Provider:"), ag.Provider.Name())
+	fmt.Printf("  %s\n", cSubtle("Type your prompt, @ to tag files, or / for commands"))
+	fmt.Println()
+
+	completer := func(d prompt.Document) []prompt.Suggest {
+		word := d.GetWordBeforeCursor()
+		if strings.HasPrefix(word, "/") {
+			return []prompt.Suggest{
+				{Text: "/help", Description: "Show help message"},
+				{Text: "/exit", Description: "Exit the agent"},
+				{Text: "/clear", Description: "Clear the screen"},
+				{Text: "/compact", Description: "Clear conversation history"},
+				{Text: "/save", Description: "Save the current session"},
+				{Text: "/resume", Description: "Resume a previous session"},
+				{Text: "/model", Description: "Switch AI model"},
+				{Text: "/usage", Description: "Show token usage stats"},
+				{Text: "/version", Description: "Show version info"},
 			}
 		}
+		if strings.HasPrefix(word, "@") {
+			path := strings.TrimPrefix(word, "@")
+			dir := "."
+			if idx := strings.LastIndex(path, "/"); idx != -1 {
+				dir = path[:idx]
+			}
+			fullDir := filepath.Join(ag.WorkDir, dir)
+			entries, _ := os.ReadDir(fullDir)
+			var suggestions []prompt.Suggest
+			for _, entry := range entries {
+				name := entry.Name()
+				if entry.IsDir() {
+					name += "/"
+				}
+				p := filepath.Join(dir, name)
+				if dir == "." {
+					p = name
+				}
+				if strings.HasPrefix(p, path) {
+					suggestions = append(suggestions, prompt.Suggest{Text: "@" + p})
+				}
+			}
+			return suggestions
+		}
+		return nil
 	}
 
-	ui.ShowStartupBanner()
-
-	var err error
-	currentProvider, err = ai.NewProvider()
-
-	if err != nil {
-		return runSetupWizard(err)
-	}
-
-	scanner := bufio.NewScanner(os.Stdin)
-	cActive := color.New(color.BgCyan, color.FgBlack, color.Bold).SprintFunc()
-
-	for {
-		fmt.Printf("  %s %s\n\n", cActive(" "+lang.T("active_brain")+" "), currentProvider.Name())
-
-		fmt.Printf("  [ 1 ]   %s %s\n", lang.T("chat_mode"), lang.T("chat_mode_desc"))
-		fmt.Printf("  [ 2 ]   %s %s\n", lang.T("code_review"), lang.T("review_desc"))
-		fmt.Printf("  [ 3 ]   %s %s\n", lang.T("code_editor"), lang.T("editor_desc"))
-		fmt.Printf("  [ 4 ]   %s %s\n", lang.T("switch_model"), lang.T("switch_desc"))
-		fmt.Printf("  [ 5 ]   %s %s\n", lang.T("system_info"), lang.T("info_desc"))
-		fmt.Printf("  [ 6 ]   %s %s\n", lang.T("uninstall"), lang.T("uninstall_desc"))
-		fmt.Printf("  [ 7 ]   %s\n", "Change API Key")
-		fmt.Println()
-		fmt.Printf("  [ 0 ]   %s %s\n", lang.T("exit"), lang.T("exit_desc"))
-
-		fmt.Printf("\n  %s > ", lang.T("select_command"))
-		if !scanner.Scan() {
-			return nil
+	executor := func(input string) {
+		input = strings.TrimSpace(input)
+		if input == "" {
+			return
 		}
 
-		input := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(input, "/") {
+			if handleCommand(input, ag) {
+				os.Exit(0)
+			}
+			return
+		}
 
-		switch input {
-		case "1":
-			startChatMode(scanner)
-		case "2":
-			StartReviewModeInteractive(scanner, currentProvider)
-		case "3":
-			StartEditModeInteractive(scanner, currentProvider)
-		case "4":
-			handleSwitchModel(scanner)
-		case "5":
-			fmt.Print("\033[H\033[2J")
-			ui.ShowStartupBanner()
-		case "6":
-			runUninstaller()
-			return nil
-		case "7":
-			handleChangeAPIKey(scanner)
-		case "0":
-			fmt.Printf("\n  %s\n\n", lang.T("shutting_down"))
-			return nil
-		default:
-			fmt.Print("\033[H\033[2J")
-			ui.ShowStartupBanner()
+		ctx := context.Background()
+		if err := ag.ProcessPrompt(ctx, input); err != nil {
+			color.Red("\n  Error: %v\n", err)
 		}
 	}
+
+	p := prompt.New(
+		executor,
+		completer,
+		prompt.OptionPrefix("  forge > "),
+		prompt.OptionPrefixTextColor(prompt.Cyan),
+		prompt.OptionSuggestionBGColor(prompt.DarkGray),
+		prompt.OptionSelectedSuggestionBGColor(prompt.Cyan),
+		prompt.OptionSelectedSuggestionTextColor(prompt.Black),
+		prompt.OptionDescriptionBGColor(prompt.Black),
+		prompt.OptionMaxSuggestion(10),
+		prompt.OptionSuggestionTextColor(prompt.White),
+	)
+
+	p.Run()
+
+	if len(ag.History) > 0 {
+		configDir := filepath.Dir(config.GetConfigPath())
+		id, _ := agent.SaveSession(ag.History, ag.Tasks, ag.WorkDir, configDir)
+		color.HiBlack("  Session auto-saved as %s", id)
+	}
+	ag.ProcMgr.Cleanup()
+
 	return nil
 }
 
-func runFirstTimeSetup() error {
+// [EN] handleCommand processes slash commands (e.g., /help, /exit) in the REPL.
+// [ID] handleCommand memproses perintah slash (misal: /help, /exit) di REPL.
+func handleCommand(input string, ag *agent.Agent) bool {
+	parts := strings.Fields(input)
+	cmd := strings.ToLower(parts[0])
+
+	switch cmd {
+	case "/exit", "/quit", "/q":
+		fmt.Println()
+		color.HiBlack("  Goodbye!")
+		fmt.Println()
+		return true
+
+	case "/clear", "/cls":
+		fmt.Print("\033[H\033[2J")
+		showBanner(ag)
+
+	case "/help", "/h":
+		showHelp()
+
+	case "/model":
+		handleModelSwitch(ag)
+
+	case "/compact":
+		ag.ClearHistory()
+		color.Green("  [OK] Conversation history cleared")
+		fmt.Println()
+
+	case "/save":
+		configDir := filepath.Dir(config.GetConfigPath())
+		id, err := agent.SaveSession(ag.History, ag.Tasks, ag.WorkDir, configDir)
+		if err != nil {
+			color.Red("  Error saving session: %v\n", err)
+		} else {
+			color.Green("  [OK] Session saved as: %s\n", id)
+		}
+		fmt.Println()
+
+	case "/resume":
+		handleResume(ag)
+
+	case "/ps":
+		handleProcesses(ag)
+
+	case "/usage":
+		color.HiCyan("\n  %s\n\n", ag.UsageSummary())
+
+	case "/version":
+		fmt.Printf("  Forge Code v%s\n\n", Version)
+
+	default:
+		color.Yellow("  Unknown command: %s (type /help for commands)\n\n", cmd)
+	}
+
+	return false
+}
+
+func handleResume(ag *agent.Agent) {
+	scanner := bufio.NewScanner(os.Stdin)
+	configDir := filepath.Dir(config.GetConfigPath())
+	sessions, err := agent.ListSessions(configDir)
+	if err != nil {
+		color.Red("  Error listing sessions: %v\n", err)
+		return
+	}
+
+	if len(sessions) == 0 {
+		color.Yellow("  No saved sessions found.\n")
+		return
+	}
+
+	ui.PrintHeader("RESUME SESSION")
+	for i, s := range sessions {
+		fmt.Printf("  %d. %s\n", i+1, s)
+	}
+	fmt.Println("  0. Cancel")
+	fmt.Print("\n  Select > ")
+
+	if !scanner.Scan() {
+		return
+	}
+
+	choice := strings.TrimSpace(scanner.Text())
+	if choice == "0" || choice == "" {
+		return
+	}
+
+	var idx int
+	fmt.Sscanf(choice, "%d", &idx)
+	if idx > 0 && idx <= len(sessions) {
+		sessionID := sessions[idx-1]
+		history, tasks, err := agent.LoadSession(sessionID, configDir)
+		if err != nil {
+			color.Red("  Error loading session: %v\n", err)
+			return
+		}
+		ag.History = history
+		ag.Tasks = tasks
+		color.Green("  [OK] Resumed session: %s (%d messages)\n\n", sessionID, len(history))
+	}
+}
+
+func handleProcesses(ag *agent.Agent) {
+	scanner := bufio.NewScanner(os.Stdin)
+	procs := ag.ProcMgr.List()
+	if len(procs) == 0 {
+		color.Yellow("  No active background processes.\n")
+		return
+	}
+
+	ui.PrintHeader("BACKGROUND PROCESSES")
+	for _, p := range procs {
+		fmt.Printf("  %d. [%d] %s\n", p.ID, p.Cmd.Process.Pid, p.Command)
+	}
+	fmt.Println("  0. Back")
+	fmt.Print("\n  To stop a process, enter ID (or 0 to cancel) > ")
+
+	if !scanner.Scan() {
+		return
+	}
+
+	choice := strings.TrimSpace(scanner.Text())
+	if choice == "0" || choice == "" {
+		return
+	}
+
+	var idx int
+	fmt.Sscanf(choice, "%d", &idx)
+	if idx > 0 {
+		err := ag.ProcMgr.Stop(idx)
+		if err != nil {
+			color.Red("  Error stopping process: %v\n", err)
+		} else {
+			color.Green("  [OK] Process %d terminated.\n", idx)
+		}
+	}
+}
+
+func runOneShot(prompt string) error {
+	ag, err := createAgent()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	return ag.ProcessPrompt(ctx, prompt)
+}
+
+func showBanner(ag *agent.Agent) {
+	ui.ShowStartupBanner(Version)
+
+	cVer := color.New(color.FgHiBlack).SprintFunc()
+	cWarn := color.New(color.FgHiYellow).SprintFunc()
+
+	if ag != nil {
+		ws := agent.DetectWorkspace(ag.WorkDir)
+		if !ws.HasGit {
+			fmt.Printf("  %s\n", cWarn("[!] Not in a git repository. Changes cannot be easily undone."))
+		} else if ws.GitDirtyCount > 0 {
+			fmt.Printf("  %s %s\n", cVer("Git:"), cWarn(fmt.Sprintf("%s (%d uncommitted changes)", ws.GitBranch, ws.GitDirtyCount)))
+		} else {
+			fmt.Printf("  %s %s\n", cVer("Git:"), color.HiGreenString(ws.GitBranch))
+		}
+	}
+	fmt.Println()
+}
+
+func showHelp() {
+	cCmd := color.New(color.FgCyan).SprintFunc()
+	cDesc := color.New(color.FgWhite).SprintFunc()
+	cTitle := color.New(color.FgHiCyan, color.Bold).SprintFunc()
+
+	fmt.Println()
+	fmt.Printf("  %s\n", cTitle("Commands"))
+	fmt.Printf("  %s  %s\n", cCmd("/help    "), cDesc("Show this help"))
+	fmt.Printf("  %s  %s\n", cCmd("/clear   "), cDesc("Clear screen"))
+	fmt.Printf("  %s  %s\n", cCmd("/compact "), cDesc("Clear conversation history"))
+	fmt.Printf("  %s  %s\n", cCmd("/model   "), cDesc("Switch AI provider/model"))
+	fmt.Printf("  %s  %s\n", cCmd("/usage   "), cDesc("Show session token usage"))
+	fmt.Printf("  %s  %s\n", cCmd("/save    "), cDesc("Save current session"))
+	fmt.Printf("  %s  %s\n", cCmd("/resume  "), cDesc("Resume a saved session"))
+	fmt.Printf("  %s  %s\n", cCmd("/ps      "), cDesc("List/stop background processes"))
+	fmt.Printf("  %s  %s\n", cCmd("/version "), cDesc("Show version"))
+	fmt.Printf("  %s  %s\n", cCmd("/exit    "), cDesc("Exit Forge Code"))
+	fmt.Println()
+}
+
+func handleModelSwitch(ag *agent.Agent) {
+	scanner := bufio.NewScanner(os.Stdin)
+	ui.PrintHeader("SWITCH MODEL")
+	fmt.Println("  1. Gemini 2.5 Flash")
+	fmt.Println("  2. Gemini 2.5 Pro")
+	fmt.Println("  3. GPT-4o Mini")
+	fmt.Println("  4. GPT-4o")
+	fmt.Println("  5. Claude Sonnet 4")
+	fmt.Println("  6. NVIDIA Nemotron (Reasoning)")
+	fmt.Println("  7. Groq Llama 3.1 70B")
+	fmt.Println("  8. DeepSeek Coder")
+	fmt.Println("  9. Together Llama 3.1 70B")
+	fmt.Println("  10. Mistral Large")
+	fmt.Println("  11. Ollama (Local)")
+	fmt.Println("  0. Cancel")
+	fmt.Print("\n  Select > ")
+
+	if !scanner.Scan() {
+		return
+	}
+
+	providers := map[string][2]string{
+		"1":  {"gemini", "gemini-2.5-flash"},
+		"2":  {"gemini", "gemini-2.5-pro"},
+		"3":  {"openai", "gpt-4o-mini"},
+		"4":  {"openai", "gpt-4o"},
+		"5":  {"claude", "claude-sonnet-4-20250514"},
+		"6":  {"nvidia", ""},
+		"7":  {"groq", ""},
+		"8":  {"deepseek", ""},
+		"9":  {"together", ""},
+		"10": {"mistral", ""},
+	}
+
+	choice := strings.TrimSpace(scanner.Text())
+
+	if choice == "11" {
+		fmt.Print("  Model name (e.g., llama3): ")
+		if scanner.Scan() {
+			model := strings.TrimSpace(scanner.Text())
+			if model == "" {
+				model = "llama3"
+			}
+			p, err := ai.CreateFCProvider("ollama", model)
+			if err != nil {
+				color.Red("  Error: %v", err)
+				return
+			}
+			ag.Provider = p
+			ag.ClearHistory()
+			color.Green("  [OK] Switched to %s\n\n", p.Name())
+			config.SaveLastModel("ollama", model)
+		}
+		return
+	}
+
+	if info, ok := providers[choice]; ok {
+		p, err := ai.CreateFCProvider(info[0], info[1])
+		if err != nil {
+			color.Red("  Error: %v\n", err)
+			color.Yellow("  Set the API key and try again.\n\n")
+			return
+		}
+		ag.Provider = p
+		ag.ClearHistory()
+		color.Green("  [OK] Switched to %s\n\n", p.Name())
+		config.SaveLastModel(info[0], info[1])
+	}
+}
+
+func runQuickSetup() error {
 	fmt.Print("\033[H\033[2J")
 
-	cTitle := color.New(color.FgHiCyan, color.Bold).SprintFunc()
-	cBorder := color.New(color.FgHiBlack).SprintFunc()
-	cHighlight := color.New(color.FgHiYellow, color.Bold).SprintFunc()
-	cWhite := color.New(color.FgWhite).SprintFunc()
-
+	ui.ShowStartupBanner(Version)
+	color.HiCyan("  Welcome to Forge Code Setup!")
 	fmt.Println()
-	fmt.Println()
-	time.Sleep(200 * time.Millisecond)
-
-	fmt.Println(cTitle("      ╔══════════════════════════════════════════╗"))
-	time.Sleep(100 * time.Millisecond)
-	fmt.Println(cTitle("      ║                                          ║"))
-	fmt.Println(cTitle("      ║      Welcome to ForgeAI CLI v" + Version + "       ║"))
-	time.Sleep(100 * time.Millisecond)
-	fmt.Println(cTitle("      ║    AI-Powered Development Assistant      ║"))
-	fmt.Println(cTitle("      ║                                          ║"))
-	time.Sleep(100 * time.Millisecond)
-	fmt.Println(cTitle("      ║          Developed by bromanprjkt        ║"))
-	fmt.Println(cTitle("      ║                                          ║"))
-	fmt.Println(cTitle("      ╚══════════════════════════════════════════╝"))
-	time.Sleep(200 * time.Millisecond)
-
-	fmt.Println()
-	fmt.Println()
-	fmt.Println(cHighlight("      ⚡ FIRST TIME SETUP"))
-	fmt.Println(cBorder("      ────────────────────────────────────────────"))
-	fmt.Println()
-	time.Sleep(200 * time.Millisecond)
-
-	fmt.Println(cWhite("      Choose your preferred language:"))
-	fmt.Println()
-	time.Sleep(100 * time.Millisecond)
-
-	fmt.Println("         " + cBorder("[") + color.New(color.FgCyan, color.Bold).Sprint(" 1 ") + cBorder("]") + "  🇬🇧 English")
-	time.Sleep(100 * time.Millisecond)
-	fmt.Println("         " + cBorder("[") + color.New(color.FgCyan, color.Bold).Sprint(" 2 ") + cBorder("]") + "  🇮🇩 Bahasa Indonesia")
-	fmt.Println()
-	time.Sleep(100 * time.Millisecond)
-
-	fmt.Print(cHighlight("      ➤ Select [1-2]: "))
 
 	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("  Set up your AI provider:")
+	fmt.Println("  1. Google Gemini (recommended)")
+	fmt.Println("  2. OpenAI")
+	fmt.Println("  3. Anthropic Claude")
+	fmt.Println("  4. NVIDIA NIM")
+	fmt.Println("  5. Groq")
+	fmt.Println("  6. DeepSeek")
+	fmt.Println("  7. Ollama (local, no API key)")
+	fmt.Print("\n  Select > ")
+
 	if !scanner.Scan() {
 		return fmt.Errorf("setup cancelled")
 	}
 
 	choice := strings.TrimSpace(scanner.Text())
-	language := "en"
-
-	if choice == "2" {
-		language = "id"
-	}
-
-	if err := config.SaveLanguage(language); err != nil {
-		return err
-	}
-
-	if err := config.SaveFirstRun(false); err != nil {
-		return err
-	}
-
-	lang.SetLanguage(language)
-
-	fmt.Println()
-	fmt.Println()
-
-	for i := 0; i < 3; i++ {
-		fmt.Print("\r      ")
-		time.Sleep(200 * time.Millisecond)
-		if language == "id" {
-			fmt.Print(color.GreenString("✓ Menyimpan pengaturan..."))
-		} else {
-			fmt.Print(color.GreenString("✓ Saving preferences..."))
-		}
-	}
-
-	fmt.Println()
-	fmt.Println()
-
-	if language == "id" {
-		color.Green("      ✓ Pengaturan berhasil! Memulai ForgeAI...")
-	} else {
-		color.Green("      ✓ Setup successful! Starting ForgeAI...")
-	}
-	fmt.Println()
-	time.Sleep(1200 * time.Millisecond)
-
-	return nil
-}
-
-func runSetupWizard(originalErr error) error {
-	color.Yellow("\n  SETUP REQUIRED")
-	fmt.Println("  ForgeAI needs an AI provider to function.")
-	fmt.Printf("  Error: %v\n", originalErr)
-	fmt.Println()
-
-	fmt.Println("  Select AI Provider:")
-	fmt.Println("  1. Ollama (Free, Local, Offline)")
-	fmt.Println("  2. Google Gemini (Free tier available)")
-	fmt.Println("  3. OpenAI ChatGPT (Paid)")
-	fmt.Println("  4. Anthropic Claude (Paid)")
-	fmt.Println("  0. Exit")
-
-	fmt.Print("\n  Select > ")
-	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
-		return nil
-	}
-
-	choice := strings.TrimSpace(scanner.Text())
-
 	switch choice {
 	case "1":
-		color.Yellow("\n  Make sure Ollama is running on port 11434.")
-		fmt.Println("  Install: https://ollama.ai")
-		fmt.Println("  Press Enter to check connection...")
-		scanner.Scan()
-		fmt.Print("\033[H\033[2J")
-		return runMainMenu()
-
-	case "2":
-		fmt.Println("\n  Get your key: https://aistudio.google.com/app/apikey")
-		fmt.Print("  Paste Gemini API Key: ")
-		if scanner.Scan() {
-			apiKey := strings.TrimSpace(scanner.Text())
-			if apiKey == "" {
-				color.Red("  Empty key provided.")
-				return fmt.Errorf("setup aborted")
-			}
-
-			err := config.SaveAPIKey("GEMINI_API_KEY", apiKey)
-			if err != nil {
-				color.Red("  Failed to save key: %v", err)
-				return err
-			}
-
-			color.Green("  Configuration saved! Restarting...")
-			time.Sleep(1 * time.Second)
-			godotenv.Load()
-			fmt.Print("\033[H\033[2J")
-			return runMainMenu()
-		}
-
-	case "3":
-		fmt.Println("\n  Get your key: https://platform.openai.com/api-keys")
-		fmt.Print("  Paste OpenAI API Key: ")
-		if scanner.Scan() {
-			apiKey := strings.TrimSpace(scanner.Text())
-			if apiKey == "" {
-				color.Red("  Empty key provided.")
-				return fmt.Errorf("setup aborted")
-			}
-
-			err := config.SaveAPIKey("OPENAI_API_KEY", apiKey)
-			if err != nil {
-				color.Red("  Failed to save key: %v", err)
-				return err
-			}
-
-			color.Green("  Configuration saved! Restarting...")
-			time.Sleep(1 * time.Second)
-			godotenv.Load()
-			fmt.Print("\033[H\033[2J")
-			return runMainMenu()
-		}
-
-	case "4":
-		fmt.Println("\n  Get your key: https://console.anthropic.com/settings/keys")
-		fmt.Print("  Paste Claude API Key: ")
-		if scanner.Scan() {
-			apiKey := strings.TrimSpace(scanner.Text())
-			if apiKey == "" {
-				color.Red("  Empty key provided.")
-				return fmt.Errorf("setup aborted")
-			}
-
-			err := config.SaveAPIKey("ANTHROPIC_API_KEY", apiKey)
-			if err != nil {
-				color.Red("  Failed to save key: %v", err)
-				return err
-			}
-
-			color.Green("  Configuration saved! Restarting...")
-			time.Sleep(1 * time.Second)
-			godotenv.Load()
-			fmt.Print("\033[H\033[2J")
-			return runMainMenu()
-		}
-	}
-
-	return nil
-}
-
-func startChatMode(scanner *bufio.Scanner) {
-	fmt.Print("\033[H\033[2J")
-	ui.ShowStartupBanner()
-
-	cHeader := color.New(color.FgHiCyan, color.Bold).SprintFunc()
-	cSubtle := color.New(color.FgHiBlack).SprintFunc()
-	fmt.Println()
-	fmt.Printf("  %s\n", cHeader("━━━ CHAT MODE ━━━"))
-	fmt.Printf("  %s\n", cSubtle("Type 'exit' to return • 'clear' to reset screen"))
-	fmt.Println()
-
-	cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
-	cPrompt := color.New(color.FgCyan).SprintFunc()
-
-	mdRenderer := ui.NewMarkdownRenderer()
-
-	var systemPrompt string
-	if lang.GetLanguage() == "id" {
-		systemPrompt = `Anda adalah Forge AI, asisten coding profesional yang dikembangkan oleh bromanprjkt. 
-Ketika ditanya siapa Anda, jawab: "Saya adalah Forge AI, asisten coding cerdas Anda yang dirancang untuk membantu code review, editing, dan tugas pengembangan."
-Ketika ditanya siapa yang membuat Anda, jawab: "Saya dikembangkan oleh bromanprjkt, developer yang passionate tentang AI-powered development tools."
-Selalu profesional, membantu, dan ringkas dalam respons Anda. Gunakan Bahasa Indonesia untuk semua respons.`
-	} else {
-		systemPrompt = `You are Forge AI, a professional coding assistant developed by bromanprjkt. 
-When asked who you are, respond: "I am Forge AI, your intelligent coding assistant designed to help with code review, editing, and development tasks."
-When asked who created you, respond: "I was developed by bromanprjkt, a skilled developer passionate about AI-powered development tools."
-Always be professional, helpful, and concise in your responses.`
-	}
-
-	currentProvider.Send(systemPrompt)
-
-	for {
-		fmt.Printf("\n  %s ", cPrompt("You >"))
-
-		if !scanner.Scan() {
-			break
-		}
-		input := strings.TrimSpace(scanner.Text())
-
-		if input == "" {
-			continue
-		}
-		if input == "back" || input == "exit" {
-			fmt.Print("\033[H\033[2J")
-			ui.ShowStartupBanner()
-			break
-		}
-		if input == "clear" || input == "cls" {
-			fmt.Print("\033[H\033[2J")
-			ui.ShowStartupBanner()
-			fmt.Println()
-			fmt.Printf("  %s\n", cHeader("━━━ CHAT MODE ━━━"))
-			fmt.Printf("  %s\n", cSubtle("Type 'exit' to return • 'clear' to reset screen"))
-			fmt.Println()
-			continue
-		}
-
-		spinner := ui.NewSpinner("Thinking")
-		spinner.Start()
-		resp, err := currentProvider.Send(input)
-		spinner.Stop()
-
-		if err != nil {
-			color.Red("  Error: %v\n", err)
-		} else {
-			fmt.Printf("\n  %s\n\n", cAI("Forge AI >"))
-
-			rendered := mdRenderer.Render(resp)
-			fmt.Println(rendered)
-
-			fmt.Println()
-		}
-	}
-}
-
-func getAndValidateAPIKey(scanner *bufio.Scanner, keyName, keyURL, providerType, modelName string) bool {
-	maxRetries := 3
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		if attempt == 1 {
-			fmt.Printf("\n  Get your key: %s\n", keyURL)
-		} else {
-			color.Yellow("\n  Attempt %d of %d", attempt, maxRetries)
-		}
-
+		fmt.Println("\n  Get key: https://aistudio.google.com/app/apikey")
 		fmt.Print("  Paste API Key: ")
-		scanner.Scan()
-		apiKey := strings.TrimSpace(scanner.Text())
-
-		if apiKey == "" {
-			color.Red("  Empty key provided.")
-			if attempt < maxRetries {
-				fmt.Print("  Try again? [Y/n]: ")
-				scanner.Scan()
-				response := strings.ToLower(strings.TrimSpace(scanner.Text()))
-				if response == "n" || response == "no" {
-					return false
-				}
-				continue
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("GEMINI_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("gemini", "gemini-2.5-flash")
 			}
-			return false
-		}
-
-		if err := config.SaveAPIKey(keyName, apiKey); err != nil {
-			color.Red("  Failed to save key: %v", err)
-			return false
-		}
-		godotenv.Load()
-
-		color.Cyan("\n  Validating API key...")
-		spinner := ui.NewSpinner("Testing connection")
-		spinner.Start()
-
-		testProvider, err := ai.CreateProvider(providerType, modelName)
-		if err != nil {
-			spinner.Stop()
-			color.Red("  ✗ Invalid API key: %v", err)
-
-			if attempt < maxRetries {
-				fmt.Print("\n  Try again? [Y/n]: ")
-				scanner.Scan()
-				response := strings.ToLower(strings.TrimSpace(scanner.Text()))
-				if response == "n" || response == "no" {
-					return false
-				}
-				continue
-			}
-			return false
-		}
-
-		_, err = testProvider.Send("Hi")
-		spinner.Stop()
-
-		if err != nil {
-			errMsg := strings.ToLower(err.Error())
-			if strings.Contains(errMsg, "api key") || strings.Contains(errMsg, "unauthorized") ||
-				strings.Contains(errMsg, "authentication") || strings.Contains(errMsg, "invalid") ||
-				strings.Contains(errMsg, "401") || strings.Contains(errMsg, "403") {
-				color.Red("  ✗ API Key validation failed: %v", err)
-
-				if attempt < maxRetries {
-					fmt.Print("\n  Try again? [Y/n]: ")
-					scanner.Scan()
-					response := strings.ToLower(strings.TrimSpace(scanner.Text()))
-					if response == "n" || response == "no" {
-						return false
-					}
-					continue
-				}
-				return false
-			}
-		}
-
-		color.Green("  ✓ API Key validated successfully!")
-		time.Sleep(500 * time.Millisecond)
-		return true
-	}
-
-	color.Red("\n  Maximum retry attempts reached. Please check your API key.")
-	return false
-}
-
-func handleChangeAPIKey(scanner *bufio.Scanner) {
-	ui.PrintHeader("CHANGE API KEY")
-	fmt.Println("  Select provider to change API key:")
-	fmt.Println("  1. Google Gemini")
-	fmt.Println("  2. OpenAI ChatGPT")
-	fmt.Println("  3. Anthropic Claude")
-	fmt.Println("  0. Back")
-	fmt.Print("\n  Selection: ")
-	scanner.Scan()
-	choice := strings.TrimSpace(scanner.Text())
-
-	switch choice {
-	case "1":
-		color.Cyan("\n  Changing Gemini API Key...")
-		if getAndValidateAPIKey(scanner, "GEMINI_API_KEY", "https://aistudio.google.com/app/apikey", "gemini", "gemini-2.5-flash") {
-			color.Green("\n  ✓ Gemini API Key updated successfully!")
-			time.Sleep(1 * time.Second)
 		}
 	case "2":
-		color.Cyan("\n  Changing OpenAI API Key...")
-		if getAndValidateAPIKey(scanner, "OPENAI_API_KEY", "https://platform.openai.com/api-keys", "openai", "gpt-3.5-turbo") {
-			color.Green("\n  ✓ OpenAI API Key updated successfully!")
-			time.Sleep(1 * time.Second)
+		fmt.Println("\n  Get key: https://platform.openai.com/api-keys")
+		fmt.Print("  Paste API Key: ")
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("OPENAI_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("openai", "gpt-4o-mini")
+			}
 		}
 	case "3":
-		color.Cyan("\n  Changing Claude API Key...")
-		if getAndValidateAPIKey(scanner, "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys", "claude", "claude-3-haiku-20240307") {
-			color.Green("\n  ✓ Claude API Key updated successfully!")
-			time.Sleep(1 * time.Second)
-		}
-	case "0":
-		// Back to menu
-		return
-	default:
-		color.Yellow("  Invalid selection")
-		time.Sleep(1 * time.Second)
-	}
-
-	fmt.Print("\033[H\033[2J")
-	ui.ShowStartupBanner()
-}
-
-func handleSwitchModel(scanner *bufio.Scanner) {
-	ui.PrintHeader("SWITCH AI PROVIDER")
-	fmt.Println("  1. Gemini 2.5 Flash")
-	fmt.Println("  2. Gemini Pro")
-	fmt.Println("  3. OpenAI GPT-3.5 Turbo")
-	fmt.Println("  4. OpenAI GPT-4")
-	fmt.Println("  5. Claude 3 Haiku")
-	fmt.Println("  6. Claude 3 Sonnet")
-	fmt.Println("  7. Ollama (Local)")
-	fmt.Print("\n  Selection: ")
-	scanner.Scan()
-	choice := strings.TrimSpace(scanner.Text())
-
-	var p ai.Provider
-	var err error
-	var selectedModel string
-	var providerType string
-
-	switch choice {
-	case "1":
-		providerType = "gemini"
-		selectedModel = "gemini-2.5-flash"
-		if os.Getenv("GEMINI_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "GEMINI_API_KEY", "https://aistudio.google.com/app/apikey", providerType, selectedModel) {
-				return
+		fmt.Println("\n  Get key: https://console.anthropic.com/settings/keys")
+		fmt.Print("  Paste API Key: ")
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("ANTHROPIC_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("claude", "claude-sonnet-4-20250514")
 			}
 		}
-		p, err = ai.CreateProvider("gemini", selectedModel)
-	case "2":
-		providerType = "gemini"
-		selectedModel = "gemini-pro"
-		if os.Getenv("GEMINI_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "GEMINI_API_KEY", "https://aistudio.google.com/app/apikey", providerType, selectedModel) {
-				return
-			}
-		}
-		p, err = ai.CreateProvider("gemini", selectedModel)
-	case "3":
-		providerType = "openai"
-		selectedModel = "gpt-3.5-turbo"
-		if os.Getenv("OPENAI_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "OPENAI_API_KEY", "https://platform.openai.com/api-keys", providerType, selectedModel) {
-				return
-			}
-		}
-		p, err = ai.CreateProvider("openai", selectedModel)
 	case "4":
-		providerType = "openai"
-		selectedModel = "gpt-4"
-		if os.Getenv("OPENAI_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "OPENAI_API_KEY", "https://platform.openai.com/api-keys", providerType, selectedModel) {
-				return
+		fmt.Println("\n  Get key: https://build.nvidia.com/explore/discover")
+		fmt.Print("  Paste NVIDIA API Key: ")
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("NVIDIA_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("nvidia", "nvidia/nemotron-3-super-120b-a12b")
 			}
 		}
-		p, err = ai.CreateProvider("openai", selectedModel)
 	case "5":
-		providerType = "claude"
-		selectedModel = "claude-3-haiku-20240307"
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys", providerType, selectedModel) {
-				return
+		fmt.Println("\n  Get key: https://console.groq.com/keys")
+		fmt.Print("  Paste Groq API Key: ")
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("GROQ_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("groq", "llama-3.1-70b-versatile")
 			}
 		}
-		p, err = ai.CreateProvider("claude", selectedModel)
 	case "6":
-		providerType = "claude"
-		selectedModel = "claude-3-sonnet-20240229"
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			if !getAndValidateAPIKey(scanner, "ANTHROPIC_API_KEY", "https://console.anthropic.com/settings/keys", providerType, selectedModel) {
-				return
+		fmt.Println("\n  Get key: https://platform.deepseek.com/api_keys")
+		fmt.Print("  Paste DeepSeek API Key: ")
+		if scanner.Scan() {
+			key := strings.TrimSpace(scanner.Text())
+			if key != "" {
+				config.SaveAPIKey("DEEPSEEK_API_KEY", key)
+				godotenv.Load()
+				config.SaveLastModel("deepseek", "deepseek-coder")
 			}
 		}
-		p, err = ai.CreateProvider("claude", selectedModel)
 	case "7":
-		providerType = "ollama"
-		ui.PrintHeader("ENTER OLLAMA MODEL")
-		fmt.Print("  Model name: ")
-		scanner.Scan()
-		selectedModel = strings.TrimSpace(scanner.Text())
-		if selectedModel == "" {
-			selectedModel = "llama3"
-		}
-		p, err = ai.CreateProvider("ollama", selectedModel)
-	default:
-		return
+		color.Yellow("  Make sure Ollama is running (https://ollama.com)")
+		config.SaveLastModel("ollama", "llama3")
 	}
 
-	if err == nil {
-		currentProvider = p
-
-		if err := config.SaveLastModel(providerType, selectedModel); err != nil {
-			color.Red("  Warning: Could not save model preference: %v\n", err)
-		}
-
-		fmt.Print("\033[H\033[2J")
-		ui.ShowStartupBanner()
-		color.Green("\n  Provider switched to: %s\n", p.Name())
-	} else {
-		color.Red("  Error: %v\n", err)
-		time.Sleep(2 * time.Second)
-	}
-}
-
-func runOneShot(prompt string) error {
-	p, err := ai.NewProvider()
-	if err != nil {
-		return err
-	}
-	res, err := p.Send(prompt)
-	if err != nil {
-		return err
-	}
-	fmt.Println(res)
+	config.SaveFirstRun(false)
+	color.Green("\n  [OK] Setup complete!")
+	time.Sleep(1 * time.Second)
+	fmt.Print("\033[H\033[2J")
 	return nil
 }
 
-func initConfig() {
-	godotenv.Load()
+func runProviderSetup(originalErr error) error {
+	color.Yellow("\n  [!] AI Provider configuration error")
+	fmt.Printf("  Error: %v\n\n", originalErr)
+
+	fmt.Print("  Do you want to re-configure now? [Y/n]: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() && strings.ToLower(strings.TrimSpace(scanner.Text())) != "n" {
+		if err := runQuickSetup(); err == nil {
+			return runREPL("")
+		}
+	}
+
+	fmt.Println("\n  Please set an API key (export or .env):")
+	fmt.Println("  GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,")
+	fmt.Println("  NVIDIA_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY")
+	return originalErr
 }
 
-func runUninstaller() {
-	if err := runSelfUninstall(); err != nil {
-		color.Red("\n  Error during uninstall: %v\n", err)
-		time.Sleep(3 * time.Second)
+func mustGetwd() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "."
 	}
+	return dir
 }
