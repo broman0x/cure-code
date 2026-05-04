@@ -22,17 +22,17 @@ func runSelfInstall() error {
 	var installDir, destPath string
 
 	if runtime.GOOS == "windows" {
-		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeCode")
-		destPath = filepath.Join(installDir, "forgecode.exe")
+		installDir = filepath.Join(os.Getenv("LocalAppData"), "curecode")
+		destPath = filepath.Join(installDir, "curecode.exe")
 	} else {
 		home, _ := os.UserHomeDir()
 		installDir = filepath.Join(home, ".local", "bin")
-		destPath = filepath.Join(installDir, "forgecode")
+		destPath = filepath.Join(installDir, "curecode")
 	}
 
 	fmt.Println()
 	cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
-	fmt.Printf("  %s %s\n", cAI("✦"), cAI("FORGE CODE"))
+	fmt.Printf("  %s %s\n", cAI("✦"), cAI("CuRe Code"))
 	color.HiBlack("  Setup & Installer • v" + Version)
 	fmt.Println()
 
@@ -62,10 +62,10 @@ func runSelfInstall() error {
 
 		fmt.Println()
 		color.Green("  ══════════════════════════════════════════")
-		color.Green("  Forge Code is already installed!")
+		color.Green("  CuRe Code is already installed!")
 		color.Green("  ══════════════════════════════════════════")
 		fmt.Println()
-		color.Cyan("  You can run 'forgecode' from any directory")
+		color.Cyan("  You can run 'curecode' from any directory")
 		fmt.Println()
 		return nil
 	}
@@ -121,12 +121,12 @@ func runSelfInstall() error {
 	fmt.Println()
 
 	if runtime.GOOS == "windows" {
-		color.Cyan("  Run 'forgecode' from any directory")
+		color.Cyan("  Run 'curecode' from any directory")
 		color.Yellow("  Note: Restart terminal for PATH changes to take effect")
 	} else {
 		color.Cyan("  Installed to: %s", destPath)
 		color.Yellow("  Run: source ~/.bashrc  (or ~/.zshrc)")
-		color.Cyan("  Then: forgecode")
+		color.Cyan("  Then: curecode")
 	}
 	fmt.Println()
 
@@ -187,7 +187,7 @@ func ensurePathInShellRC(installDir string) error {
 			continue
 		}
 
-		fmt.Fprintf(f, "\n# Added by Forge Code installer\n%s\n", pathExport)
+		fmt.Fprintf(f, "\n# Added by CuRe Code installer\n%s\n", pathExport)
 		f.Close()
 		updated = true
 	}
@@ -203,19 +203,19 @@ func runSelfUninstall() error {
 	var installDir, exePath, configDir string
 
 	if runtime.GOOS == "windows" {
-		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeCode")
-		exePath = filepath.Join(installDir, "forgecode.exe")
-		configDir = filepath.Join(os.Getenv("APPDATA"), "ForgeCode")
+		installDir = filepath.Join(os.Getenv("LocalAppData"), "curecode")
+		exePath = filepath.Join(installDir, "curecode.exe")
+		configDir = filepath.Join(os.Getenv("APPDATA"), "curecode")
 	} else {
 		home, _ := os.UserHomeDir()
 		installDir = filepath.Join(home, ".local", "bin")
-		exePath = filepath.Join(installDir, "forgecode")
-		configDir = filepath.Join(home, ".config", "forgecode")
+		exePath = filepath.Join(installDir, "curecode")
+		configDir = filepath.Join(home, ".config", "curecode")
 	}
 
 	fmt.Println()
 	cAI := color.New(color.FgHiYellow, color.Bold).SprintFunc()
-	fmt.Printf("  %s %s\n", cAI("✦"), cAI("FORGE CODE"))
+	fmt.Printf("  %s %s\n", cAI("✦"), cAI("CuRe Code"))
 	color.HiBlack("  Uninstaller • v" + Version)
 	fmt.Println()
 
@@ -260,7 +260,7 @@ func runSelfUninstall() error {
 		fmt.Print("  [3/3] Scheduling executable removal...")
 		time.Sleep(300 * time.Millisecond)
 
-		scriptPath := filepath.Join(os.TempDir(), "forge_uninstall.ps1")
+		scriptPath := filepath.Join(os.TempDir(), "cure_uninstall.ps1")
 		script := fmt.Sprintf(`Start-Sleep -Seconds 2
 Remove-Item -Path "%s" -Force -ErrorAction SilentlyContinue
 Remove-Item -Path "%s" -Recurse -Force -ErrorAction SilentlyContinue
@@ -301,15 +301,15 @@ Remove-Item -Path "%s" -Force
 	color.Green("  Uninstallation complete!")
 	color.Green("  ══════════════════════════════════════════")
 	fmt.Println()
-	color.Cyan("  Thank you for using Forge Code!")
+	color.Cyan("  Thank you for using CuRe Code!")
 
 	if runtime.GOOS == "windows" {
 		color.Yellow("  Restart your terminal for PATH changes to take effect")
 		fmt.Println()
-		fmt.Println("  Forge Code will exit in 3 seconds...")
+		fmt.Println("  CuRe Code will exit in 3 seconds...")
 		time.Sleep(3 * time.Second)
 	} else {
-		fmt.Println("  Forge Code will exit now...")
+		fmt.Println("  CuRe Code will exit now...")
 		time.Sleep(2 * time.Second)
 	}
 

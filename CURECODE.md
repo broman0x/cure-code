@@ -1,10 +1,10 @@
-# FORGECODE.md - Project Instructions
+# curecode.md - Project Instructions
 
-This file provides instructions for AI coding agents working on the Forge Code project.
+This file provides instructions for AI coding agents working on the CuRe Code project.
 
 ## Project Overview
 
-Forge Code is an AI coding agent CLI built with Go. It uses an agentic loop architecture where the AI autonomously calls tools to complete coding tasks.
+CuRe Code is an AI coding agent CLI built with Go. It uses an agentic loop architecture where the AI autonomously calls tools to complete coding tasks.
 
 ## Architecture
 

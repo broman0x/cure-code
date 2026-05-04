@@ -42,7 +42,7 @@ func (t *ProjectSummaryTool) Execute(ctx context.Context, params map[string]inte
 	sb.WriteString(tree)
 
 	sb.WriteString("\n## KEY FILES\n")
-	keyFiles := []string{"README.md", "package.json", "go.mod", "requirements.txt", "FORGECODE.md", "CODEBASE.md"}
+	keyFiles := []string{"README.md", "package.json", "go.mod", "requirements.txt", "CURECODE.md", "CODEBASE.md"}
 	foundKey := false
 	for _, f := range keyFiles {
 		if _, err := os.Stat(filepath.Join(t.workDir, f)); err == nil {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/broman0x/forge-code/internal/agent"
-	"github.com/broman0x/forge-code/internal/tools"
+	"github.com/broman0x/cure-code/internal/agent"
+	"github.com/broman0x/cure-code/internal/tools"
 )
 
 var (

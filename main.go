@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/broman0x/forge-code/cmd"
+	"github.com/broman0x/cure-code/cmd"
 )
 
 // [EN] main is the entry point of the application. It handles global panic recovery and starts the command execution.

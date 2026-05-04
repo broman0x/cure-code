@@ -1,14 +1,14 @@
 <div align="center">
  
-<img src="logo.png" width="400" alt="Forge Code Logo">
+<img src="logo.png" width="200" alt="CuRe Code Logo">
 
-# Forge Code
+# CuRe Code
 
 **AI Coding Agent for Your Terminal**
 
-[![Release](https://img.shields.io/github/v/release/broman0x/forge-code?label=Release&color=blue)](https://github.com/broman0x/forge-code/releases/latest)
+[![Release](https://img.shields.io/github/v/release/broman0x/cure-code?label=Release&color=blue)](https://github.com/broman0x/cure-code/releases/latest)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20macOS-lightgrey.svg)](https://github.com/broman0x/forge-code)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20macOS-lightgrey.svg)](https://github.com/broman0x/cure-code)
 [![Go](https://img.shields.io/badge/Built%20with-Go-00ADD8.svg)](https://go.dev)
 
 An agentic AI coding assistant that lives in your terminal.
@@ -18,9 +18,9 @@ Built with Go for speed and portability.
 
 ---
 
-## What is Forge Code?
+## What is CuRe Code?
 
-Forge Code is an **AI coding agent** that can read, write, and edit your code directly from the terminal. Unlike simple chat-based CLI tools, Forge Code uses an **agentic loop** — it autonomously decides which tools to use, reads your files, makes changes, runs commands, and iterates until the task is complete.
+CuRe Code is an **AI coding agent** that can read, write, and edit your code directly from the terminal. Unlike simple chat-based CLI tools, CuRe Code uses an **agentic loop** — it autonomously decides which tools to use, reads your files, makes changes, runs commands, and iterates until the task is complete.
 
 ### Key Features
 
@@ -33,7 +33,7 @@ Forge Code is an **AI coding agent** that can read, write, and edit your code di
 | **Process Manager** | Run and manage background tasks with `/ps` |
 | **Confirmation Flow** | Dangerous operations require your approval (or use `--yolo`) |
 | **Single Binary** | No Node.js, no Python — just one Go executable |
-| **REPL + One-shot** | Interactive mode or `forgecode "fix the tests"` |
+| **REPL + One-shot** | Interactive mode or `curecode "fix the tests"` |
 
 ### Built-in Tools
 
@@ -55,16 +55,16 @@ Forge Code is an **AI coding agent** that can read, write, and edit your code di
 
 ```bash
 # Download the binary for your platform, then:
-./forgecode --install    # Install to PATH
-forgecode                # Launch REPL
+./curecode --install    # Install to PATH
+curecode                # Launch REPL
 ```
 
 ### One-shot Mode
 
 ```bash
-forgecode "explain this codebase"
-forgecode "add error handling to main.go"
-forgecode "write tests for the auth module"
+curecode "explain this codebase"
+curecode "add error handling to main.go"
+curecode "write tests for the auth module"
 ```
 
 ## Setup
@@ -73,35 +73,35 @@ forgecode "write tests for the auth module"
 
 ```bash
 export GEMINI_API_KEY="your-key-from-aistudio.google.com"
-forgecode
+curecode
 ```
 
 ### Option 2: OpenAI
 
 ```bash
 export OPENAI_API_KEY="your-key-from-platform.openai.com"
-forgecode
+curecode
 ```
 
 ### Option 3: Anthropic Claude
 
 ```bash
 export ANTHROPIC_API_KEY="your-key-from-console.anthropic.com"
-forgecode
+curecode
 ```
 
 ### Option 4: NVIDIA NIM (Reasoning)
 
 ```bash
 export NVIDIA_API_KEY="your-key-from-build.nvidia.com"
-forgecode
+curecode
 ```
 
 ### Option 5: DeepSeek
 
 ```bash
 export DEEPSEEK_API_KEY="your-key"
-forgecode
+curecode
 ```
 
 ### Option 6: Ollama (Free, Local)
@@ -109,7 +109,7 @@ forgecode
 ```bash
 # Install from https://ollama.com
 ollama pull llama3
-forgecode
+curecode
 ```
 
 ---
@@ -127,13 +127,13 @@ forgecode
 | `/save` | Save current session |
 | `/resume` | Resume a saved session |
 | `/version` | Show version |
-| `/exit` | Exit Forge Code |
+| `/exit` | Exit CuRe Code |
 
 ---
 
 ## How It Works
 
-Forge Code uses a sophisticated **agentic architecture** to solve complex tasks:
+CuRe Code uses a sophisticated **agentic architecture** to solve complex tasks:
 
 ```
 User Prompt
@@ -165,7 +165,7 @@ The AI has full autonomy to chain multiple tool calls until the task is complete
 ## Architecture
 
 ```
-forge-code/
+cure-code/
 ├── main.go                     # Entry point
 ├── cmd/
 │   ├── root.go                 # REPL, one-shot, slash commands
@@ -205,14 +205,14 @@ forge-code/
 
 ```bash
 # Requirements: Go 1.25+
-git clone https://github.com/broman0x/forge-code.git
-cd forge-code
-go build -o forgecode .
+git clone https://github.com/broman0x/cure-code.git
+cd cure-code
+go build -o curecode .
 
 # Or cross-compile:
-GOOS=linux GOARCH=amd64 go build -o forgecode-linux .
-GOOS=darwin GOARCH=arm64 go build -o forgecode-mac .
-GOOS=windows GOARCH=amd64 go build -o forgecode.exe .
+GOOS=linux GOARCH=amd64 go build -o curecode-linux .
+GOOS=darwin GOARCH=arm64 go build -o curecode-mac .
+GOOS=windows GOARCH=amd64 go build -o curecode.exe .
 ```
 
 ---
@@ -221,8 +221,8 @@ GOOS=windows GOARCH=amd64 go build -o forgecode.exe .
 
 | Platform | Config | Binary |
 |----------|--------|--------|
-| **Windows** | `%APPDATA%\ForgeCode\config.json` | `%LocalAppData%\ForgeCode\forgecode.exe` |
-| **Linux/macOS** | `~/.config/forgecode/config.json` | `~/.local/bin/forgecode` |
+| **Windows** | `%APPDATA%\curecode\config.json` | `%LocalAppData%\curecode\curecode.exe` |
+| **Linux/macOS** | `~/.config/curecode/config.json` | `~/.local/bin/curecode` |
 
 ---
 
