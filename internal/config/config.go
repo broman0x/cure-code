@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+// [EN] Config represents the application settings stored in a JSON file.
+// [ID] Config mewakili pengaturan aplikasi yang disimpan dalam file JSON.
 type Config struct {
 	Language     string `json:"language"`
 	FirstRun     bool   `json:"first_run"`
@@ -22,11 +24,17 @@ var globalConfig *Config
 func GetConfigPath() string {
 	home, _ := os.UserHomeDir()
 	if os.Getenv("APPDATA") != "" {
-		return filepath.Join(os.Getenv("APPDATA"), "ForgeAI", "config.json")
+		return filepath.Join(os.Getenv("APPDATA"), "ForgeCode", "config.json")
 	}
-	return filepath.Join(home, ".config", "forgeai", "config.json")
+	return filepath.Join(home, ".config", "forgecode", "config.json")
 }
 
+func GetEnvPath() string {
+	return filepath.Join(filepath.Dir(GetConfigPath()), ".env")
+}
+
+// [EN] Load reads the configuration from the disk or returns default values.
+// [ID] Load membaca konfigurasi dari disk atau mengembalikan nilai default.
 func Load() *Config {
 	if globalConfig != nil {
 		return globalConfig
@@ -39,7 +47,7 @@ func Load() *Config {
 		globalConfig = &Config{
 			Language: "en",
 			FirstRun: true,
-			Version:  "1.0.1",
+			Version:  "2.0.0",
 		}
 		return globalConfig
 	}
@@ -49,7 +57,7 @@ func Load() *Config {
 		globalConfig = &Config{
 			Language: "en",
 			FirstRun: true,
-			Version:  "1.0.1",
+			Version:  "2.0.0",
 		}
 		return globalConfig
 	}
@@ -102,12 +110,15 @@ func SaveFirstRun(status bool) error {
 }
 
 func CreateEnvFile(apiKey string) error {
+	envPath := GetEnvPath()
+	os.MkdirAll(filepath.Dir(envPath), 0755)
 	content := fmt.Sprintf("GEMINI_API_KEY=%s\n", apiKey)
-	return os.WriteFile(".env", []byte(content), 0644)
+	return os.WriteFile(envPath, []byte(content), 0644)
 }
 
 func SaveAPIKey(keyName, keyValue string) error {
-	envPath := ".env"
+	envPath := GetEnvPath()
+	os.MkdirAll(filepath.Dir(envPath), 0755)
 
 	existing, err := os.ReadFile(envPath)
 	envContent := ""

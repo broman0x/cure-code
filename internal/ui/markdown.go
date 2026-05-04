@@ -52,18 +52,16 @@ func (m *MarkdownRenderer) Render(text string) string {
 				if len(parts) > 1 {
 					codeLanguage = parts[1]
 				}
-				result = append(result, "")
-				result = append(result, m.code("  ┌─ Code: "+codeLanguage))
+				result = append(result, m.code("  ╭─ "+codeLanguage))
 			} else {
-				result = append(result, m.code("  └─"))
-				result = append(result, "")
+				result = append(result, m.code("  ╰─"))
 				codeLanguage = ""
 			}
 			continue
 		}
 
 		if inCodeBlock {
-			result = append(result, m.renderCodeLine(line))
+			result = append(result, m.renderCodeLine(line, codeLanguage))
 			continue
 		}
 
@@ -88,10 +86,10 @@ func (m *MarkdownRenderer) renderLine(line string) string {
 	}
 
 	if strings.HasPrefix(trimmed, "### ") {
-		return "  " + m.heading3("▍ "+strings.TrimPrefix(trimmed, "### "))
+		return "  " + m.heading3("▒ "+strings.TrimPrefix(trimmed, "### "))
 	}
 	if strings.HasPrefix(trimmed, "## ") {
-		return "  " + m.heading2("▊ "+strings.TrimPrefix(trimmed, "## "))
+		return "  " + m.heading2("▓ "+strings.TrimPrefix(trimmed, "## "))
 	}
 	if strings.HasPrefix(trimmed, "# ") {
 		return "  " + m.heading1("█ "+strings.TrimPrefix(trimmed, "# "))
@@ -106,7 +104,7 @@ func (m *MarkdownRenderer) renderLine(line string) string {
 	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
 		content := trimmed[2:]
 		content = m.processInlineFormatting(content)
-		return "  " + m.listBullet("•") + " " + content
+		return "  " + m.listBullet("-") + " " + content
 	}
 
 	re := regexp.MustCompile(`^(\d+)\.\s+(.*)`)
@@ -160,11 +158,16 @@ func (m *MarkdownRenderer) processInlineFormatting(text string) string {
 	return text
 }
 
-func (m *MarkdownRenderer) renderCodeLine(line string) string {
-	if strings.TrimSpace(line) == "" {
-		return "  │"
+func (m *MarkdownRenderer) renderCodeLine(line string, lang string) string {
+	if lang == "diff" {
+		if strings.HasPrefix(line, "+") {
+			return color.New(color.FgHiGreen).Sprintf("  │ %s", line)
+		}
+		if strings.HasPrefix(line, "-") {
+			return color.New(color.FgHiRed).Sprintf("  │ %s", line)
+		}
 	}
-	return "  │ " + m.code(line)
+	return "  │ " + line
 }
 
 func (m *MarkdownRenderer) StreamRender(text string, charDelay int) {
@@ -182,6 +185,6 @@ func (m *MarkdownRenderer) StreamRender(text string, charDelay int) {
 			continue
 		}
 
-		fmt.Println(line) 
+		fmt.Println(line)
 	}
 }

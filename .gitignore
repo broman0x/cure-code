@@ -1,0 +1,30 @@
+# Build output
+forgecode
+forgecode.exe
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Environment
+.env
+
+# Debug
+debug/
+*.log
+*.prof

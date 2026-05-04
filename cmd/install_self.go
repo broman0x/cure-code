@@ -22,18 +22,18 @@ func runSelfInstall() error {
 	var installDir, destPath string
 
 	if runtime.GOOS == "windows" {
-		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeAI")
-		destPath = filepath.Join(installDir, "forge.exe")
+		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeCode")
+		destPath = filepath.Join(installDir, "forgecode.exe")
 	} else {
 		home, _ := os.UserHomeDir()
 		installDir = filepath.Join(home, ".local", "bin")
-		destPath = filepath.Join(installDir, "forge")
+		destPath = filepath.Join(installDir, "forgecode")
 	}
 
 	fmt.Println()
-	color.Cyan("  ╔══════════════════════════════════════════╗")
-	color.Cyan("  ║     ForgeAI CLI - Self Installer         ║")
-	color.Cyan("  ╚══════════════════════════════════════════╝")
+	cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
+	fmt.Printf("  %s %s\n", cAI("✦"), cAI("FORGE CODE"))
+	color.HiBlack("  Setup & Installer • v" + Version)
 	fmt.Println()
 
 	if filepath.Clean(exePath) == filepath.Clean(destPath) {
@@ -44,9 +44,9 @@ func runSelfInstall() error {
 			color.Cyan("  Checking PATH configuration...")
 			time.Sleep(500 * time.Millisecond)
 			if err := ensurePathInShellRC(installDir); err == nil {
-				color.Green("  ✓ PATH configured in shell")
+				color.Green("  [OK] PATH configured in shell")
 			} else {
-				color.Green("  ✓ Already in PATH")
+				color.Green("  [OK] Already in PATH")
 			}
 		} else {
 			color.Cyan("  Checking PATH configuration...")
@@ -54,18 +54,18 @@ func runSelfInstall() error {
 			cmd := exec.Command("powershell", "-Command",
 				fmt.Sprintf("$path = [Environment]::GetEnvironmentVariable('Path', 'User'); if ($path -notlike '*%s*') { [Environment]::SetEnvironmentVariable('Path', $path + ';%s', 'User'); exit 0 } else { exit 1 }", installDir, installDir))
 			if err := cmd.Run(); err == nil {
-				color.Green("  ✓ Added to PATH")
+				color.Green("  [OK] Added to PATH")
 			} else {
-				color.Green("  ✓ Already in PATH")
+				color.Green("  [OK] Already in PATH")
 			}
 		}
 
 		fmt.Println()
 		color.Green("  ══════════════════════════════════════════")
-		color.Green("  ForgeAI is already installed!")
+		color.Green("  Forge Code is already installed!")
 		color.Green("  ══════════════════════════════════════════")
 		fmt.Println()
-		color.Cyan("  You can run 'forge' from any directory")
+		color.Cyan("  You can run 'forgecode' from any directory")
 		fmt.Println()
 		return nil
 	}
@@ -87,7 +87,7 @@ func runSelfInstall() error {
 		color.Red(" Failed")
 		return fmt.Errorf("could not copy executable: %v", err)
 	}
-	color.Green(" Done ✓")
+	color.Green(" Done [OK]")
 
 	fmt.Print("  [2/2] Configuring PATH...")
 	time.Sleep(200 * time.Millisecond)
@@ -100,7 +100,7 @@ func runSelfInstall() error {
 			fmt.Println()
 			color.Yellow("  Please add manually: %s", installDir)
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 	} else {
 		if err := ensurePathInShellRC(installDir); err != nil {
@@ -109,7 +109,7 @@ func runSelfInstall() error {
 			color.Yellow("  Please add to your shell rc file:")
 			color.Cyan("  export PATH=\"$HOME/.local/bin:$PATH\"")
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 	}
 
@@ -121,14 +121,21 @@ func runSelfInstall() error {
 	fmt.Println()
 
 	if runtime.GOOS == "windows" {
-		color.Cyan("  Run 'forge' from any directory")
-		color.Yellow("  Note: Restart terminal for PATH changes")
+		color.Cyan("  Run 'forgecode' from any directory")
+		color.Yellow("  Note: Restart terminal for PATH changes to take effect")
 	} else {
 		color.Cyan("  Installed to: %s", destPath)
 		color.Yellow("  Run: source ~/.bashrc  (or ~/.zshrc)")
-		color.Cyan("  Then: forge")
+		color.Cyan("  Then: forgecode")
 	}
 	fmt.Println()
+
+	fmt.Println("  Do you want to set up your AI provider now?")
+	fmt.Print("  Continue? [Y/n]: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() || strings.ToLower(strings.TrimSpace(scanner.Text())) != "n" {
+		return runQuickSetup()
+	}
 
 	return nil
 }
@@ -180,7 +187,7 @@ func ensurePathInShellRC(installDir string) error {
 			continue
 		}
 
-		fmt.Fprintf(f, "\n# Added by ForgeAI CLI installer\n%s\n", pathExport)
+		fmt.Fprintf(f, "\n# Added by Forge Code installer\n%s\n", pathExport)
 		f.Close()
 		updated = true
 	}
@@ -196,28 +203,28 @@ func runSelfUninstall() error {
 	var installDir, exePath, configDir string
 
 	if runtime.GOOS == "windows" {
-		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeAI")
-		exePath = filepath.Join(installDir, "forge.exe")
-		configDir = filepath.Join(os.Getenv("APPDATA"), "ForgeAI")
+		installDir = filepath.Join(os.Getenv("LocalAppData"), "ForgeCode")
+		exePath = filepath.Join(installDir, "forgecode.exe")
+		configDir = filepath.Join(os.Getenv("APPDATA"), "ForgeCode")
 	} else {
 		home, _ := os.UserHomeDir()
 		installDir = filepath.Join(home, ".local", "bin")
-		exePath = filepath.Join(installDir, "forge")
-		configDir = filepath.Join(home, ".config", "forgeai")
+		exePath = filepath.Join(installDir, "forgecode")
+		configDir = filepath.Join(home, ".config", "forgecode")
 	}
 
 	fmt.Println()
-	color.New(color.FgYellow, color.Bold).Println("  ╔══════════════════════════════════════════╗")
-	color.New(color.FgYellow, color.Bold).Println("  ║    ForgeAI CLI - Uninstaller v" + Version + "       ║")
-	color.New(color.FgYellow, color.Bold).Println("  ╚══════════════════════════════════════════╝")
+	cAI := color.New(color.FgHiYellow, color.Bold).SprintFunc()
+	fmt.Printf("  %s %s\n", cAI("✦"), cAI("FORGE CODE"))
+	color.HiBlack("  Uninstaller • v" + Version)
 	fmt.Println()
 
 	color.Yellow("  This will remove:")
-	fmt.Println("  • Executable from PATH")
-	fmt.Println("  • All configuration files")
-	fmt.Println("  • Saved preferences")
+	fmt.Println("  - Executable from PATH")
+	fmt.Println("  - All configuration files")
+	fmt.Println("  - Saved preferences")
 	fmt.Println()
-	color.Red("  ⚠ This action cannot be undone!")
+	color.Red("  [!] This action cannot be undone!")
 	fmt.Println()
 	fmt.Print("  Continue? [y/N]: ")
 
@@ -239,7 +246,7 @@ func runSelfUninstall() error {
 		if err := cmd.Run(); err != nil {
 			color.Red(" Failed")
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 
 		fmt.Print("  [2/3] Removing configuration...")
@@ -247,7 +254,7 @@ func runSelfUninstall() error {
 		if err := os.RemoveAll(configDir); err != nil && !os.IsNotExist(err) {
 			color.Red(" Failed")
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 
 		fmt.Print("  [3/3] Scheduling executable removal...")
@@ -265,14 +272,14 @@ Remove-Item -Path "%s" -Force
 		} else {
 			cmd := exec.Command("powershell", "-WindowStyle", "Hidden", "-File", scriptPath)
 			cmd.Start()
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 	} else {
 		fmt.Print("  [1/2] Removing executable...")
 		if err := os.Remove(exePath); err != nil && !os.IsNotExist(err) {
 			color.Red(" Failed")
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 
 		fmt.Print("  [2/2] Removing configuration...")
@@ -280,7 +287,7 @@ Remove-Item -Path "%s" -Force
 		if err := os.RemoveAll(configDir); err != nil && !os.IsNotExist(err) {
 			color.Red(" Failed")
 		} else {
-			color.Green(" Done ✓")
+			color.Green(" Done [OK]")
 		}
 
 		fmt.Println()
@@ -294,15 +301,15 @@ Remove-Item -Path "%s" -Force
 	color.Green("  Uninstallation complete!")
 	color.Green("  ══════════════════════════════════════════")
 	fmt.Println()
-	color.Cyan("  Thank you for using ForgeAI CLI!")
+	color.Cyan("  Thank you for using Forge Code!")
 
 	if runtime.GOOS == "windows" {
 		color.Yellow("  Restart your terminal for PATH changes to take effect")
 		fmt.Println()
-		fmt.Println("  ForgeAI will exit in 3 seconds...")
+		fmt.Println("  Forge Code will exit in 3 seconds...")
 		time.Sleep(3 * time.Second)
 	} else {
-		fmt.Println("  ForgeAI will exit now...")
+		fmt.Println("  Forge Code will exit now...")
 		time.Sleep(2 * time.Second)
 	}
 
