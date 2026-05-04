@@ -13,15 +13,13 @@ import (
 	"github.com/broman0x/cure-code/internal/ai"
 	"github.com/broman0x/cure-code/internal/config"
 	"github.com/broman0x/cure-code/internal/ui"
+	"github.com/broman0x/cure-code/internal/version"
 	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
-// [EN] Version is the current version of CuRe Code.
-// [ID] Version adalah versi CuRe Code saat ini.
-const Version = "1.0.1"
 
 var (
 	cfgFile     string
@@ -38,8 +36,8 @@ var rootCmd = &cobra.Command{
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
-			fmt.Printf("CuRe Code v%s\n", Version)
-			fmt.Println("AI Coding Agent by bromanprjkt")
+			fmt.Printf("CuRe Code v%s\n", version.Version)
+			fmt.Println(version.BuildName + " by " + version.Author)
 			return nil
 		}
 		if doInstall {
@@ -293,7 +291,8 @@ func handleCommand(input string, ag *agent.Agent) bool {
 		color.HiCyan("\n  %s\n\n", ag.UsageSummary())
 
 	case "/version":
-		fmt.Printf("  CuRe Code v%s\n\n", Version)
+		fmt.Printf("  CuRe Code v%s\n", version.GetVersion())
+		fmt.Printf("  Architecture: Agentic Memory v1.0\n\n")
 
 	default:
 		color.Yellow("  Unknown command: %s (type /help for commands)\n\n", cmd)
@@ -393,7 +392,7 @@ func runOneShot(prompt string) error {
 }
 
 func showBanner(ag *agent.Agent) {
-	ui.ShowStartupBanner(Version)
+	ui.ShowStartupBanner(version.Version)
 
 	cVer := color.New(color.FgHiBlack).SprintFunc()
 	cWarn := color.New(color.FgHiYellow).SprintFunc()
@@ -530,7 +529,7 @@ func handleModelSwitch(ag *agent.Agent) {
 func runQuickSetup() error {
 	fmt.Print("\033[H\033[2J")
 
-	ui.ShowStartupBanner(Version)
+	ui.ShowStartupBanner(version.Version)
 	color.HiCyan("  Welcome to CuRe Code Setup!")
 	fmt.Println()
 

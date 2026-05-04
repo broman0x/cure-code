@@ -1,48 +1,45 @@
 <template>
   <footer class="footer">
-    <div class="container footer-content">
-      <div class="footer-left">
-        <span class="logo">CuRe Code</span>
-        <p>Built by bromanprjkt</p>
-      </div>
-      <div class="footer-right">
-        <p>© 2026 CuRe Code. MIT License.</p>
-      </div>
+    <div class="container foot-inner">
+      <span class="foot-brand">CuRe Code</span>
+      <span class="foot-sep">·</span>
+      <span class="foot-copy">Built by bromanprjkt</span>
+      <span class="foot-right">© 2026 · GNU GPL v3</span>
     </div>
   </footer>
 </template>
 
 <style scoped>
 .footer {
-  padding: 4rem 0;
-  border-top: 1px solid var(--border);
-  background: var(--bg-secondary);
+  border-top: 1px solid var(--line);
 }
 
-.footer-content {
+.foot-inner {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  padding: 20px 24px;
+  font-size: 0.78rem;
 }
 
-.logo {
+.foot-brand {
   font-weight: 700;
-  font-size: 0.9rem;
-  display: block;
-  margin-bottom: 0.25rem;
+  color: var(--text);
 }
 
-p {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+.foot-sep, .foot-copy {
+  color: var(--text-3);
 }
 
-@media (max-width: 600px) {
-  .footer-content {
-    flex-direction: column;
-    gap: 1rem;
-    text-align: center;
-  }
+.foot-right {
+  margin-left: auto;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+}
+
+@media (max-width: 500px) {
+  .foot-inner { flex-wrap: wrap; gap: 6px; }
+  .foot-right { margin-left: 0; }
 }
 </style>
-

@@ -44,6 +44,36 @@ func (t *ShellTool) ParameterSchema() map[string]interface{} {
 	}
 }
 
+func (t *ShellTool) validateCommand(command string) string {
+	// [EN] Basic security parser to flag dangerous shell patterns.
+	// [ID] Parser keamanan dasar untuk menandai pola shell yang berbahaya.
+	dangerousPatterns := []struct {
+		pattern string
+		reason  string
+	}{
+		{";", "Command chaining (;) detected"},
+		{"&&", "Logical AND (&&) detected"},
+		{"||", "Logical OR (||) detected"},
+		{"|", "Piping (|) detected"},
+		{"`", "Backticks (`) detected"},
+		{"$(", "Command substitution $() detected"},
+		{">", "Output redirection (>) detected"},
+		{"<", "Input redirection (<) detected"},
+	}
+
+	var warnings []string
+	for _, p := range dangerousPatterns {
+		if strings.Contains(command, p.pattern) {
+			warnings = append(warnings, p.reason)
+		}
+	}
+
+	if len(warnings) > 0 {
+		return "⚠️  Security Warning: " + strings.Join(warnings, ", ")
+	}
+	return ""
+}
+
 func (t *ShellTool) NeedsConfirmation(params map[string]interface{}) bool {
 	return true
 }
@@ -136,9 +166,15 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 		result = "(no output)"
 	}
 
+	display := fmt.Sprintf("[X] Ran: %s", truncateStr(command, 60))
+	if warning := t.validateCommand(command); warning != "" {
+		display = warning + "\n  " + display
+		result = "WARNING: " + warning + "\n\n" + result
+	}
+
 	return &ToolResult{
 		Content: result,
-		Display: fmt.Sprintf("[X] Ran: %s", truncateStr(command, 60)),
+		Display: display,
 	}, nil
 }
 

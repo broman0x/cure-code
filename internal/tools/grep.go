@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 type GrepTool struct {
@@ -153,37 +155,62 @@ func (t *GrepTool) Execute(ctx context.Context, params map[string]interface{}) (
 		"build": true, ".idea": true, ".vscode": true,
 	}
 
+	type fileWithMtime struct {
+		path  string
+		info  os.FileInfo
+		mtime time.Time
+	}
+	var filesToSearch []fileWithMtime
+
+	// [EN] Step 1: Collect all eligible files
+	// [ID] Langkah 1: Kumpulkan semua file yang memenuhi kriteria
+	filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if skipDirs[info.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		if includeGlob != "" {
+			matched, _ := filepath.Match(includeGlob, info.Name())
+			if !matched {
+				return nil
+			}
+		}
+
+		if info.Size() > 1024*1024 || isBinaryExt(filepath.Ext(path)) {
+			return nil
+		}
+
+		filesToSearch = append(filesToSearch, fileWithMtime{
+			path:  path,
+			info:  info,
+			mtime: info.ModTime(),
+		})
+		return nil
+	})
+
+	// [EN] Step 2: Sort files by mtime descending (newest first)
+	// [ID] Langkah 2: Urutkan file berdasarkan mtime menurun (terbaru dulu)
+	sort.Slice(filesToSearch, func(i, j int) bool {
+		return filesToSearch[i].mtime.After(filesToSearch[j].mtime)
+	})
+
+	// [EN] Step 3: Feed sorted files into worker pool
+	// [ID] Langkah 3: Masukkan file yang sudah diurutkan ke worker pool
 	go func() {
 		defer close(taskCh)
-		filepath.Walk(absPath, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
+		for _, f := range filesToSearch {
 			select {
 			case <-ctx.Done():
-				return filepath.SkipAll
-			default:
-				if info.IsDir() {
-					if skipDirs[info.Name()] {
-						return filepath.SkipDir
-					}
-					return nil
-				}
-
-				if includeGlob != "" {
-					matched, _ := filepath.Match(includeGlob, info.Name())
-					if !matched {
-						return nil
-					}
-				}
-
-				if info.Size() > 1024*1024 || isBinaryExt(filepath.Ext(path)) {
-					return nil
-				}
-				taskCh <- task{path: path, info: info}
-				return nil
+				return
+			case taskCh <- task{path: f.path, info: f.info}:
 			}
-		})
+		}
 	}()
 
 	wg.Wait()

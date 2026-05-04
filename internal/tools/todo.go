@@ -56,6 +56,9 @@ func (t *TodoTool) Execute(ctx context.Context, args map[string]interface{}) (*T
 	return &ToolResult{
 		Content: string(todosJSON),
 		Display: "[T] Updated task list",
+		Metadata: map[string]interface{}{
+			"todos": todosRaw,
+		},
 	}, nil
 }
 

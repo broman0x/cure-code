@@ -13,150 +13,146 @@ const banner = [
 const lines = ref([])
 const fullSequence = [
   { type: 'banner', text: banner },
-  { type: 'info', text: '  v1.0.1 | AI Coding Agent by bromanprjkt' },
-  { type: 'info', text: '  Provider: Gemini (gemini-2.0-flash)' },
+  { type: 'meta', text: 'v1.0.2 · Galileo · bromanprjkt' },
+  { type: 'blank' },
   { type: 'input', text: 'cure > add error handling to auth/login.go' },
-  { type: 'thought', text: 'Analyzing auth/login.go...' },
-  { type: 'tool', text: 'read_file auth/login.go', status: '✔' },
-  { type: 'thought', text: 'Found unhandled error. Applying fix...' },
-  { type: 'tool', text: 'edit_file auth/login.go', status: '✔' },
-  { type: 'ai', text: '✦ CURE CODE: Added error validation. Logic is now robust.' }
+  { type: 'thought', text: 'Reading auth/login.go...' },
+  { type: 'tool', text: 'read_file', args: 'auth/login.go', ok: true },
+  { type: 'thought', text: 'Found 3 unhandled error paths. Patching...' },
+  { type: 'tool', text: 'edit_file', args: 'auth/login.go', ok: true },
+  { type: 'blank' },
+  { type: 'result', text: 'Done. Added nil-check + proper error returns to 3 call sites.' },
 ]
 
 onMounted(() => {
   let i = 0
-  const interval = setInterval(() => {
+  const tick = setInterval(() => {
     if (i < fullSequence.length) {
-      lines.value.push(fullSequence[i])
-      i++
+      lines.value.push(fullSequence[i++])
     } else {
-      clearInterval(interval)
+      clearInterval(tick)
     }
-  }, 800)
+  }, 650)
 })
 </script>
 
 <template>
-  <div class="terminal-container container">
-    <div class="terminal">
-      <div class="terminal-header">
-        <div class="terminal-dots">
-          <span></span><span></span><span></span>
-        </div>
-        <div class="terminal-title">curecode — bash</div>
+  <div class="term">
+    <div class="term-bar">
+      <div class="term-dots">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
       </div>
-      <div class="terminal-body">
-        <div v-for="(line, idx) in lines" :key="idx" :class="['line', line.type]">
-          <template v-if="line.type === 'banner'">
-            <div class="banner-text">
-              <div v-for="(bLine, bIdx) in line.text" :key="bIdx">{{ bLine }}</div>
-            </div>
-          </template>
-          <template v-else-if="line.type === 'input'">
-            <span class="prompt">{{ line.text }}</span>
-          </template>
-          <template v-else-if="line.type === 'thought'">
-            <div class="thought-header">┌─ THOUGHT</div>
-            <div class="thought-body">│ {{ line.text }}</div>
-          </template>
-          <template v-else-if="line.type === 'tool'">
-            <span class="tool-icon">{{ line.status }}</span> {{ line.text }}
-          </template>
-          <template v-else-if="line.type === 'ai'">
-            <div class="ai-msg">{{ line.text }}</div>
-          </template>
-          <template v-else>
-            {{ line.text }}
-          </template>
+      <span class="term-title">curecode — zsh</span>
+      <span></span>
+    </div>
+    <div class="term-body">
+      <template v-for="(line, i) in lines" :key="i">
+        <div v-if="line.type === 'banner'" class="l-banner">
+          <div v-for="(row, j) in line.text" :key="j">{{ row }}</div>
         </div>
-      </div>
+        <div v-else-if="line.type === 'meta'" class="l-meta">{{ line.text }}</div>
+        <div v-else-if="line.type === 'blank'" class="l-blank"></div>
+        <div v-else-if="line.type === 'input'" class="l-input">{{ line.text }}</div>
+        <div v-else-if="line.type === 'thought'" class="l-thought">· {{ line.text }}</div>
+        <div v-else-if="line.type === 'tool'" class="l-tool">
+          <span class="tool-ok">{{ line.ok ? '✓' : '✗' }}</span>
+          <span class="tool-name">{{ line.text }}</span>
+          <span class="tool-args">{{ line.args }}</span>
+        </div>
+        <div v-else-if="line.type === 'result'" class="l-result">{{ line.text }}</div>
+      </template>
+      <span class="cursor">█</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.terminal-container {
-  padding: 2rem 0 6rem;
-}
-
-.terminal {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: var(--radius);
+.term {
+  background: #0c0c0b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   overflow: hidden;
-  max-width: 850px;
-  margin: 0 auto;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+  font-family: var(--mono);
 }
 
-.terminal-header {
-  background: #161b22;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #30363d;
-  display: flex;
+.term-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
 }
 
-.terminal-dots {
+.term-dots {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
-.terminal-dots span {
-  width: 12px;
-  height: 12px;
-  background: #30363d;
+.dot {
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
 }
+.dot.red { background: #ff5f57; }
+.dot.yellow { background: #febc2e; }
+.dot.green { background: #28c840; }
 
-.terminal-title {
-  flex: 1;
+.term-title {
   text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.term-body {
+  padding: 16px 20px 20px;
+  min-height: 360px;
   font-size: 0.8rem;
-  color: #8b949e;
+  line-height: 1.55;
+  color: #b8b8b4;
 }
 
-.terminal-body {
-  padding: 1.5rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
-  min-height: 400px;
-  text-align: left;
-  color: #c9d1d9;
-  overflow-x: hidden;
-}
-
-.line {
-  margin-bottom: 0.4rem;
-  word-break: break-all;
-}
-
-.banner-text {
-  color: var(--primary);
-  font-size: 0.65rem;
-  line-height: 1.2;
-  margin-bottom: 1rem;
-  font-weight: bold;
+.l-banner {
+  color: #4a9eff;
+  font-size: 0.55rem;
+  line-height: 1.15;
   white-space: pre;
   overflow-x: auto;
+  margin-bottom: 10px;
+}
+.l-banner::-webkit-scrollbar { display: none; }
+
+.l-meta { color: var(--text-3); margin-bottom: 4px; }
+.l-blank { height: 0.8rem; }
+.l-input { color: #eeeeec; font-weight: 500; margin-top: 4px; }
+.l-thought { color: var(--text-3); padding-left: 4px; }
+
+.l-tool {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.tool-ok { color: var(--green); font-size: 0.75rem; }
+.tool-name { color: #eeeeec; }
+.tool-args { color: var(--text-3); }
+
+.l-result { color: var(--green); margin-top: 4px; }
+
+.cursor {
+  color: var(--text-2);
+  animation: blink 1.1s step-end infinite;
+  font-size: 0.9rem;
 }
 
-.banner-text::-webkit-scrollbar { display: none; }
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
 
-.info { color: #8b949e; }
-.input { margin-top: 1rem; }
-.prompt { color: #fff; font-weight: bold; }
-.thought-header { color: #8b949e; font-weight: bold; margin-top: 1rem; }
-.thought-body { color: #8b949e; border-left: 2px solid #30363d; padding-left: 12px; }
-.tool-icon { color: var(--primary); }
-.ai-msg { color: var(--primary); font-weight: bold; margin-top: 1.5rem; }
-
-
-@media (max-width: 768px) {
-  .terminal-container { padding: 1rem; }
-  .banner-text { font-size: 0.35rem; }
-  .terminal-body { font-size: 0.75rem; padding: 1rem; }
-  .terminal-title { display: none; }
+@media (max-width: 600px) {
+  .l-banner { font-size: 0.35rem; }
+  .term-body { font-size: 0.72rem; padding: 12px 14px; }
 }
 </style>
-

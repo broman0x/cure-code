@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/broman0x/cure-code/internal/version"
 	"github.com/fatih/color"
 )
 
@@ -33,7 +34,7 @@ func runSelfInstall() error {
 	fmt.Println()
 	cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
 	fmt.Printf("  %s %s\n", cAI("✦"), cAI("CuRe Code"))
-	color.HiBlack("  Setup & Installer • v" + Version)
+	color.HiBlack("  Setup & Installer • v" + version.Version)
 	fmt.Println()
 
 	if filepath.Clean(exePath) == filepath.Clean(destPath) {
@@ -124,9 +125,10 @@ func runSelfInstall() error {
 		color.Cyan("  Run 'curecode' from any directory")
 		color.Yellow("  Note: Restart terminal for PATH changes to take effect")
 	} else {
-		color.Cyan("  Installed to: %s", destPath)
-		color.Yellow("  Run: source ~/.bashrc  (or ~/.zshrc)")
-		color.Cyan("  Then: curecode")
+		color.Green("  [OK] Installed successfully!")
+		color.HiBlack("  Run 'curecode --version' to confirm v%s", version.Version)
+		color.HiBlack("  Checking architecture: %s/%s", runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("  CuRe Code v%s Installer\n\n", version.Version)
 	}
 	fmt.Println()
 
@@ -216,7 +218,7 @@ func runSelfUninstall() error {
 	fmt.Println()
 	cAI := color.New(color.FgHiYellow, color.Bold).SprintFunc()
 	fmt.Printf("  %s %s\n", cAI("✦"), cAI("CuRe Code"))
-	color.HiBlack("  Uninstaller • v" + Version)
+	color.HiBlack("  Uninstaller • v" + version.Version)
 	fmt.Println()
 
 	color.Yellow("  This will remove:")

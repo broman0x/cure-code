@@ -90,4 +90,4 @@ Terima kasih atas minat Anda untuk berkontribusi di **CuRe Code**! Kami menyambu
 
 ---
 
-**License:** By contributing, you agree that your contributions will be licensed under the [MIT License](./LICENSE).
+**License:** By contributing, you agree that your contributions will be licensed under the [GNU GPLv3 License](./LICENSE).
