@@ -34,31 +34,31 @@ jobs:
         env:
           GOOS: windows
           GOARCH: amd64
-        run: go build -ldflags="-s -w" -o bin/forgecode-windows-amd64.exe main.go
+        run: go build -ldflags="-s -w" -o bin/curecode-windows-amd64.exe main.go
 
       - name: Build for Linux (AMD64)
         env:
           GOOS: linux
           GOARCH: amd64
-        run: go build -ldflags="-s -w" -o bin/forgecode-linux-amd64 main.go
+        run: go build -ldflags="-s -w" -o bin/curecode-linux-amd64 main.go
 
       - name: Build for Linux (ARM64)
         env:
           GOOS: linux
           GOARCH: arm64
-        run: go build -ldflags="-s -w" -o bin/forgecode-linux-arm64 main.go
+        run: go build -ldflags="-s -w" -o bin/curecode-linux-arm64 main.go
 
       - name: Build for macOS (Intel)
         env:
           GOOS: darwin
           GOARCH: amd64
-        run: go build -ldflags="-s -w" -o bin/forgecode-macos-amd64 main.go
+        run: go build -ldflags="-s -w" -o bin/curecode-macos-amd64 main.go
 
       - name: Build for macOS (Silicon)
         env:
           GOOS: darwin
           GOARCH: arm64
-        run: go build -ldflags="-s -w" -o bin/forgecode-macos-arm64 main.go
+        run: go build -ldflags="-s -w" -o bin/curecode-macos-arm64 main.go
 
       - name: Release to GitHub
         uses: softprops/action-gh-release@v1

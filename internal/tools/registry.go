@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-// [EN] Tool defines the interface that all Forge Code tools must implement.
-// [ID] Tool mendefinisikan antarmuka yang harus diimplementasikan oleh semua tool Forge Code.
+// [EN] Tool defines the interface that all CuRe Code tools must implement.
+// [ID] Tool mendefinisikan antarmuka yang harus diimplementasikan oleh semua tool CuRe Code.
 type Tool interface {
 	// [EN] Name returns the unique identifier for the tool.
 	// [ID] Name mengembalikan pengenal unik untuk tool tersebut.

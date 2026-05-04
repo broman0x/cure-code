@@ -12,7 +12,7 @@ func BuildSystemPrompt(wsCtx *WorkspaceContext, skills []Skill) string {
 	now := time.Now()
 
 	projectContext := ""
-	for _, name := range []string{"FORGECODE.md", "CODEBASE.md", "CONTEXT.md"} {
+	for _, name := range []string{"CURECODE.md", "CODEBASE.md", "CONTEXT.md"} {
 		path := filepath.Join(wsCtx.WorkDir, name)
 		if content, err := os.ReadFile(path); err == nil {
 			projectContext = fmt.Sprintf("\n## PROJECT-SPECIFIC INSTRUCTIONS (%s)\n%s\n", name, string(content))
@@ -28,7 +28,7 @@ func BuildSystemPrompt(wsCtx *WorkspaceContext, skills []Skill) string {
 		}
 	}
 
-	return fmt.Sprintf(`You are Forge Code, an expert AI coding agent created by bromanprjkt.
+	return fmt.Sprintf(`You are CuRe Code, an expert AI coding agent created by bromanprjkt.
 You operate directly in the user's terminal with full access to their codebase.
 You have tools to read, write, edit files, run commands, search code, and ask questions.
 

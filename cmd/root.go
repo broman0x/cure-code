@@ -9,18 +9,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/broman0x/forge-code/internal/agent"
-	"github.com/broman0x/forge-code/internal/ai"
-	"github.com/broman0x/forge-code/internal/config"
-	"github.com/broman0x/forge-code/internal/ui"
+	"github.com/broman0x/cure-code/internal/agent"
+	"github.com/broman0x/cure-code/internal/ai"
+	"github.com/broman0x/cure-code/internal/config"
+	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
-// [EN] Version is the current version of Forge Code.
-// [ID] Version adalah versi Forge Code saat ini.
+// [EN] Version is the current version of CuRe Code.
+// [ID] Version adalah versi CuRe Code saat ini.
 const Version = "1.0.1"
 
 var (
@@ -33,12 +33,12 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "forgecode",
+	Use:   "curecode",
 	Short: "AI Coding Agent by bromanprjkt",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
-			fmt.Printf("Forge Code v%s\n", Version)
+			fmt.Printf("CuRe Code v%s\n", Version)
 			fmt.Println("AI Coding Agent by bromanprjkt")
 			return nil
 		}
@@ -223,7 +223,7 @@ func runREPL(sessionID string) error {
 	p := prompt.New(
 		executor,
 		completer,
-		prompt.OptionPrefix("  forge > "),
+		prompt.OptionPrefix("  cure > "),
 		prompt.OptionPrefixTextColor(prompt.Cyan),
 		prompt.OptionSuggestionBGColor(prompt.DarkGray),
 		prompt.OptionSelectedSuggestionBGColor(prompt.Cyan),
@@ -293,7 +293,7 @@ func handleCommand(input string, ag *agent.Agent) bool {
 		color.HiCyan("\n  %s\n\n", ag.UsageSummary())
 
 	case "/version":
-		fmt.Printf("  Forge Code v%s\n\n", Version)
+		fmt.Printf("  CuRe Code v%s\n\n", Version)
 
 	default:
 		color.Yellow("  Unknown command: %s (type /help for commands)\n\n", cmd)
@@ -427,7 +427,7 @@ func showHelp() {
 	fmt.Printf("  %s  %s\n", cCmd("/resume  "), cDesc("Resume a saved session"))
 	fmt.Printf("  %s  %s\n", cCmd("/ps      "), cDesc("List/stop background processes"))
 	fmt.Printf("  %s  %s\n", cCmd("/version "), cDesc("Show version"))
-	fmt.Printf("  %s  %s\n", cCmd("/exit    "), cDesc("Exit Forge Code"))
+	fmt.Printf("  %s  %s\n", cCmd("/exit    "), cDesc("Exit CuRe Code"))
 	fmt.Println()
 }
 
@@ -505,7 +505,7 @@ func runQuickSetup() error {
 	fmt.Print("\033[H\033[2J")
 
 	ui.ShowStartupBanner(Version)
-	color.HiCyan("  Welcome to Forge Code Setup!")
+	color.HiCyan("  Welcome to CuRe Code Setup!")
 	fmt.Println()
 
 	scanner := bufio.NewScanner(os.Stdin)

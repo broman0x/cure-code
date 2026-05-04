@@ -1,4 +1,4 @@
-module github.com/broman0x/forge-code
+module github.com/broman0x/cure-code
 
 go 1.25.4
 

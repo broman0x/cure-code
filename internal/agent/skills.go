@@ -63,7 +63,7 @@ func (r *SkillRegistry) LoadBuiltin() {
 }
 
 func (r *SkillRegistry) LoadFromDir(dir string) error {
-	skillsDir := filepath.Join(dir, ".forgecode", "skills")
+	skillsDir := filepath.Join(dir, ".curecode", "skills")
 	if _, err := os.Stat(skillsDir); os.IsNotExist(err) {
 		return nil
 	}

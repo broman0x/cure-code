@@ -1,6 +1,6 @@
 # Build output
-forgecode
-forgecode.exe
+curecode
+curecode.exe
 *.exe
 *.dll
 *.so

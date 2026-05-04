@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/broman0x/forge-code/internal/tools"
-	"github.com/broman0x/forge-code/internal/ui"
+	"github.com/broman0x/cure-code/internal/tools"
+	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/fatih/color"
 )
 
@@ -168,7 +168,7 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 						fmt.Println()
 					}
 					cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
-					fmt.Printf("  %s %s\n\n  ", cAI("✦"), cAI("FORGE CODE"))
+					fmt.Printf("  %s %s\n\n  ", cAI("✦"), cAI("CURE CODE"))
 					firstText = false
 				}
 				fmt.Print(event.Text)
@@ -280,7 +280,7 @@ func (a *Agent) processWithBatch(ctx context.Context, toolDefs []tools.ToolDefin
 
 			cAI := color.New(color.FgHiCyan, color.Bold).SprintFunc()
 			cBrand := color.New(color.FgCyan).SprintFunc()
-			fmt.Printf("\n  %s %s\n\n", cAI("✦"), cBrand("Forge Code"))
+			fmt.Printf("\n  %s %s\n\n", cAI("✦"), cBrand("CuRe Code"))
 
 			rendered := mdRenderer.Render(resp.Content)
 			fmt.Println(rendered)

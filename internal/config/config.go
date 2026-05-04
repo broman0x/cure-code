@@ -24,9 +24,9 @@ var globalConfig *Config
 func GetConfigPath() string {
 	home, _ := os.UserHomeDir()
 	if os.Getenv("APPDATA") != "" {
-		return filepath.Join(os.Getenv("APPDATA"), "ForgeCode", "config.json")
+		return filepath.Join(os.Getenv("APPDATA"), "CuReCode", "config.json")
 	}
-	return filepath.Join(home, ".config", "forgecode", "config.json")
+	return filepath.Join(home, ".config", "curecode", "config.json")
 }
 
 func GetEnvPath() string {

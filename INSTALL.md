@@ -9,11 +9,11 @@
 
 ### Install
 
-**Download** the `forgecode` binary for your platform, then:
+**Download** the `curecode` binary for your platform, then:
 
 ```bash
-chmod +x forgecode       # Linux/Mac only
-./forgecode --install    # Install
+chmod +x curecode       # Linux/Mac only
+./curecode --install    # Install
 ```
 
 ### Update
@@ -21,24 +21,24 @@ chmod +x forgecode       # Linux/Mac only
 To update, simply download the latest binary and run the install command again:
 
 ```bash
-./forgecode --install    # This will overwrite the old version
+./curecode --install    # This will overwrite the old version
 ```
 
 Restart terminal, then:
 
 ```bash
-forgecode --version      # Verify
+curecode --version      # Verify
 ```
 
 ### Uninstall
 
 ```bash
-forgecode --uninstall
+curecode --uninstall
 ```
 
 ### Troubleshooting
 
-**"forgecode not found"** - Restart your terminal
+**"curecode not found"** - Restart your terminal
 
 **Linux/Mac PATH issue:**
 ```bash
@@ -53,11 +53,11 @@ source ~/.bashrc
 
 ### Install
 
-**Download** binary `forgecode` untuk platform lu, terus:
+**Download** binary `curecode` untuk platform lu, terus:
 
 ```bash
-chmod +x forgecode       # Khusus Linux/Mac
-./forgecode --install    # Install
+chmod +x curecode       # Khusus Linux/Mac
+./curecode --install    # Install
 ```
 
 ### Update
@@ -65,24 +65,24 @@ chmod +x forgecode       # Khusus Linux/Mac
 Buat update, tinggal download binary terbaru terus jalanin lagi command install-nya:
 
 ```bash
-./forgecode --install    # Ini bakal numpuk (overwrite) versi lama
+./curecode --install    # Ini bakal numpuk (overwrite) versi lama
 ```
 
 Restart terminal, abis itu:
 
 ```bash
-forgecode --version      # Cek versi
+curecode --version      # Cek versi
 ```
 
 ### Uninstall
 
 ```bash
-forgecode --uninstall
+curecode --uninstall
 ```
 
 ### Troubleshooting
 
-**"forgecode not found"** - Restart terminal lu
+**"curecode not found"** - Restart terminal lu
 
 **Linux/Mac masalah PATH:**
 ```bash
