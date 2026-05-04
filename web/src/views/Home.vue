@@ -31,21 +31,16 @@ onMounted(() => {
       <div class="install-box">
         <template v-if="os === 'windows'">
           <h2>{{ t('install.title') }} (Windows)</h2>
-          <p>{{ t('install.win') }}</p>
+          <p>Run this command in PowerShell to install CuRe Code:</p>
           <div class="cmd-line">
-            <code>.\curecode.exe --install</code>
+            <code>iex (irm https://raw.githubusercontent.com/broman0x/cure-code/main/install.ps1)</code>
           </div>
-          <p class="mt-4">
-            <a href="https://github.com/broman0x/cure-code/releases/latest" target="_blank" class="text-link">
-              {{ t('install.win_link') }}
-            </a>
-          </p>
         </template>
         <template v-else>
           <h2>{{ t('install.title') }} ({{ os === 'macos' ? 'macOS' : 'Linux' }})</h2>
           <p>{{ t('install.subtitle') }}</p>
           <div class="cmd-line">
-            <code>curl -L https://github.com/broman0x/cure-code/releases/latest/download/curecode-{{ os === 'macos' ? 'darwin' : 'linux' }}-amd64 -o curecode && chmod +x curecode && ./curecode --install</code>
+            <code>curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash</code>
           </div>
         </template>
       </div>
