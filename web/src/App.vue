@@ -24,12 +24,14 @@ import Footer from './components/Footer.vue'
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  width: 100%;
 }
 
 main {
   flex: 1;
+  min-width: 0;
 }
-
 
 .fade-enter-active,
 .fade-leave-active {

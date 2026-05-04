@@ -129,13 +129,16 @@ func (g *GeminiFCProvider) buildRequest(systemPrompt string, messages []agent.Me
 		"systemInstruction": map[string]interface{}{
 			"parts": []map[string]interface{}{{"text": systemPrompt}},
 		},
-		"tools": []map[string]interface{}{
-			{"functionDeclarations": funcDecls},
-		},
 		"generationConfig": map[string]interface{}{
 			"maxOutputTokens": 8192,
 			"temperature":     0.7,
 		},
+	}
+
+	if len(funcDecls) > 0 {
+		reqBody["tools"] = []map[string]interface{}{
+			{"functionDeclarations": funcDecls},
+		}
 	}
 
 	return reqBody
@@ -295,7 +298,10 @@ func (o *OpenAIFCProvider) SendWithTools(systemPrompt string, messages []agent.M
 	reqBody := map[string]interface{}{
 		"model":    o.Model,
 		"messages": oaiMsgs,
-		"tools":    oaiTools,
+	}
+
+	if len(oaiTools) > 0 {
+		reqBody["tools"] = oaiTools
 	}
 
 	if strings.Contains(o.Model, "nvidia/") {
@@ -464,7 +470,10 @@ func (o *GenericOpenAIFCProvider) SendWithTools(systemPrompt string, messages []
 	reqBody := map[string]interface{}{
 		"model":    o.Model,
 		"messages": oaiMsgs,
-		"tools":    oaiTools,
+	}
+
+	if len(oaiTools) > 0 {
+		reqBody["tools"] = oaiTools
 	}
 
 	if strings.Contains(o.Model, "nvidia/") || o.ProviderName == "NVIDIA" {
@@ -632,7 +641,10 @@ func (c *AnthropicFCProvider) SendWithTools(systemPrompt string, messages []agen
 		"max_tokens": 8192,
 		"system":     systemPrompt,
 		"messages":   claudeMsgs,
-		"tools":      claudeTools,
+	}
+
+	if len(claudeTools) > 0 {
+		reqBody["tools"] = claudeTools
 	}
 
 	payload, _ := json.Marshal(reqBody)

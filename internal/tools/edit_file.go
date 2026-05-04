@@ -51,6 +51,13 @@ func (t *EditFileTool) NeedsConfirmation(params map[string]interface{}) bool {
 }
 
 func (t *EditFileTool) Execute(ctx context.Context, params map[string]interface{}) (*ToolResult, error) {
+	if planning, ok := ctx.Value(PlanningKey).(bool); ok && planning {
+		return &ToolResult{
+			Content: "Error: Cannot edit files while in Plan Mode. Please finish your exploration and design, then use 'exit_plan_mode' to apply changes.",
+			IsError: true,
+		}, nil
+	}
+
 	filePath, ok := getStringParam(params, "file_path")
 	if !ok || filePath == "" {
 		return &ToolResult{Content: "Error: file_path is required", IsError: true}, nil

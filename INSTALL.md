@@ -98,4 +98,4 @@ source ~/.bashrc
 
 ---
 
-**License:** MIT
+**License:** GNU GPLv3

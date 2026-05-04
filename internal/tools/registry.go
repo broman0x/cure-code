@@ -8,6 +8,12 @@ import (
 
 // [EN] Tool defines the interface that all CuRe Code tools must implement.
 // [ID] Tool mendefinisikan antarmuka yang harus diimplementasikan oleh semua tool CuRe Code.
+type contextKey string
+
+const PlanningKey contextKey = "planning"
+
+// [EN] Tool defines the interface that all CuRe Code tools must implement.
+// [ID] Tool mendefinisikan antarmuka yang harus diimplementasikan oleh semua tool CuRe Code.
 type Tool interface {
 	// [EN] Name returns the unique identifier for the tool.
 	// [ID] Name mengembalikan pengenal unik untuk tool tersebut.
@@ -40,6 +46,10 @@ type ToolResult struct {
 	FilesModified []string
 
 	BackgroundCmd interface{}
+
+	// [EN] Metadata contains structured data for agent internal use (e.g. found symbols)
+	// [ID] Metadata berisi data terstruktur untuk penggunaan internal agen (misal: simbol yang ditemukan)
+	Metadata map[string]interface{}
 }
 
 type ToolDefinition struct {
@@ -141,6 +151,8 @@ func NewDefaultRegistry(workDir string) *ToolRegistry {
 	r.Register(NewGitInfoTool(workDir))
 	r.Register(NewSearchSymbolTool(workDir))
 	r.Register(&TodoTool{})
+	r.Register(&EnterPlanModeTool{})
+	r.Register(&ExitPlanModeTool{})
 
 	return r
 }

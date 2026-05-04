@@ -3,159 +3,139 @@ import { ref } from 'vue'
 import { useI18n } from '../i18n'
 
 const { lang, setLang, t } = useI18n()
-const isMenuOpen = ref(false)
-
-const toggleLang = () => {
-  setLang(lang.value === 'en' ? 'id' : 'en')
-}
+const menuOpen = ref(false)
+const toggleLang = () => setLang(lang.value === 'en' ? 'id' : 'en')
 </script>
 
 <template>
-  <nav class="navbar">
-    <div class="container nav-content">
-      <router-link to="/" class="logo" @click="isMenuOpen = false">
-        <img src="/logo.png" alt="Logo" class="nav-logo">
-        CuRe Code
+  <nav class="nav">
+    <div class="container nav-inner">
+      <router-link to="/" class="nav-brand" @click="menuOpen = false">
+        <img src="/logo.png" alt="CuRe Code" class="brand-icon" />
+        <span class="brand-name">CuRe Code</span>
       </router-link>
 
-      <div class="nav-right">
-        <div :class="['nav-links', { 'is-active': isMenuOpen }]">
-          <router-link to="/" @click="isMenuOpen = false">{{ t('nav.home') }}</router-link>
-          <router-link to="/docs" @click="isMenuOpen = false">{{ t('nav.docs') }}</router-link>
-          <a href="https://github.com/broman0x/cure-code" target="_blank" class="github-btn">GitHub</a>
-        </div>
-
-        <button class="lang-switch" @click="toggleLang">
-          {{ lang === 'en' ? 'ID' : 'EN' }}
-        </button>
-
-        <button class="menu-toggle" @click="isMenuOpen = !isMenuOpen" :class="{ 'is-active': isMenuOpen }">
-          <span></span>
-          <span></span>
-        </button>
+      <div :class="['nav-links', { open: menuOpen }]">
+        <router-link to="/" @click="menuOpen = false">{{ t('nav.home') }}</router-link>
+        <router-link to="/docs" @click="menuOpen = false">{{ t('nav.docs') }}</router-link>
+        <a href="https://github.com/broman0x/cure-code" target="_blank" rel="noopener">GitHub</a>
+        <button class="lang-btn" @click="toggleLang">{{ lang === 'en' ? 'ID' : 'EN' }}</button>
       </div>
+
+      <button class="hamburger" @click="menuOpen = !menuOpen" :aria-expanded="menuOpen">
+        <span></span>
+        <span></span>
+      </button>
     </div>
   </nav>
 </template>
 
 <style scoped>
-.navbar {
+.nav {
   position: sticky;
   top: 0;
+  z-index: 100;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  z-index: 1000;
-  height: 72px;
-  display: flex;
-  align-items: center;
+  border-bottom: 1px solid var(--line);
 }
 
-.nav-content {
+.nav-inner {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
+  height: 56px;
 }
 
-.nav-right {
+.nav-brand {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-}
-
-.logo {
-  font-weight: 900;
-  font-size: 1.25rem;
+  gap: 8px;
   text-decoration: none;
-  color: #000;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
 }
 
-.nav-logo {
-  width: 48px;
-  height: 48px;
+.brand-icon {
+  width: 32px;
+  height: 32px;
   object-fit: contain;
+  display: block;
 }
+
+.brand-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+
 
 .nav-links {
   display: flex;
-  gap: 2rem;
   align-items: center;
+  gap: 28px;
 }
 
 .nav-links a {
-  text-decoration: none;
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  font-weight: 600;
-  transition: var(--transition);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-2);
+  transition: color 0.15s;
 }
 
-.nav-links a:hover, .nav-links a.router-link-active {
-  color: var(--primary);
-}
-
-.github-btn {
-  background: var(--accent);
-  color: var(--bg) !important;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.lang-switch {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
+.nav-links a:hover,
+.nav-links a.router-link-active {
   color: var(--text);
 }
 
-.menu-toggle {
+.lang-btn {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: var(--mono);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.lang-btn:hover { color: var(--text); }
+
+.hamburger {
   display: none;
   flex-direction: column;
-  gap: 6px;
-  background: transparent;
+  gap: 5px;
+  background: none;
   border: none;
   cursor: pointer;
+  padding: 4px;
 }
 
-.menu-toggle span {
-  width: 24px;
-  height: 2px;
-  background: var(--text);
-  transition: var(--transition);
+.hamburger span {
+  display: block;
+  width: 20px;
+  height: 1.5px;
+  background: var(--text-2);
 }
 
-@media (max-width: 768px) {
-  .menu-toggle { display: flex; }
-  
+@media (max-width: 680px) {
+  .hamburger { display: flex; }
+
   .nav-links {
+    display: none;
     position: fixed;
-    top: 72px;
-    left: 0;
-    width: 100%;
-    background: var(--bg);
+    inset: 56px 0 0 0;
     flex-direction: column;
-    padding: 3rem 1.5rem;
-    gap: 2.5rem;
-    border-bottom: 1px solid var(--border);
-    transform: translateY(-100%);
-    opacity: 0;
-    transition: var(--transition);
-    pointer-events: none;
+    justify-content: flex-start;
+    padding: 32px 24px;
+    gap: 24px;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
   }
 
-  .nav-links.is-active {
-    transform: translateY(0);
-    opacity: 1;
-    pointer-events: all;
-  }
+  .nav-links.open { display: flex; }
+
+  .nav-links a { font-size: 1rem; }
 }
 </style>
