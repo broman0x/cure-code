@@ -51,12 +51,14 @@ CuRe Code is an **AI coding agent** that can read, write, and edit your code dir
 
 ---
 
-## Quick Start
-
+### Linux & macOS
 ```bash
-# Download the binary for your platform, then:
-./curecode --install    # Install to PATH
-curecode                # Launch REPL
+curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash
+```
+
+### Windows (PowerShell)
+```powershell
+iex (irm https://raw.githubusercontent.com/broman0x/cure-code/main/install.ps1)
 ```
 
 ### One-shot Mode

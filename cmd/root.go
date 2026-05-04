@@ -105,7 +105,7 @@ func createAgent() (*agent.Agent, error) {
 		{"openai", "gpt-4o-mini"},
 		{"claude", "claude-sonnet-4-20250514"},
 		{"nvidia", "nvidia/nemotron-3-super-120b-a12b"},
-		{"groq", "llama-3.1-70b-versatile"},
+		{"xai", "grok-2-1212"},
 		{"deepseek", "deepseek-coder"},
 		{"ollama", "llama3"},
 	}
@@ -440,11 +440,11 @@ func handleModelSwitch(ag *agent.Agent) {
 	fmt.Println("  4. GPT-4o")
 	fmt.Println("  5. Claude Sonnet 4")
 	fmt.Println("  6. NVIDIA Nemotron (Reasoning)")
-	fmt.Println("  7. Groq Llama 3.1 70B")
+	fmt.Println("  7. xAI Grok-2")
 	fmt.Println("  8. DeepSeek Coder")
-	fmt.Println("  9. Together Llama 3.1 70B")
-	fmt.Println("  10. Mistral Large")
-	fmt.Println("  11. Ollama (Local)")
+	fmt.Println("  10. Together Llama 3.1 70B")
+	fmt.Println("  11. Mistral Large")
+	fmt.Println("  12. Ollama (Local)")
 	fmt.Println("  0. Cancel")
 	fmt.Print("\n  Select > ")
 
@@ -452,17 +452,21 @@ func handleModelSwitch(ag *agent.Agent) {
 		return
 	}
 
-	providers := map[string][2]string{
-		"1":  {"gemini", "gemini-2.5-flash"},
-		"2":  {"gemini", "gemini-2.5-pro"},
-		"3":  {"openai", "gpt-4o-mini"},
-		"4":  {"openai", "gpt-4o"},
-		"5":  {"claude", "claude-sonnet-4-20250514"},
-		"6":  {"nvidia", ""},
-		"7":  {"groq", ""},
-		"8":  {"deepseek", ""},
-		"9":  {"together", ""},
-		"10": {"mistral", ""},
+	providers := map[string]struct {
+		pType string
+		model string
+		url   string
+	}{
+		"1":  {"gemini", "gemini-2.5-flash", "https://aistudio.google.com/app/apikey"},
+		"2":  {"gemini", "gemini-2.5-pro", "https://aistudio.google.com/app/apikey"},
+		"3":  {"openai", "gpt-4o-mini", "https://platform.openai.com/api-keys"},
+		"4":  {"openai", "gpt-4o", "https://platform.openai.com/api-keys"},
+		"5":  {"claude", "claude-sonnet-4-20250514", "https://console.anthropic.com/settings/keys"},
+		"6":  {"nvidia", "nvidia/nemotron-3-super-120b-a12b", "https://build.nvidia.com/explore/discover"},
+		"7":  {"xai", "grok-2-1212", "https://console.x.ai/"},
+		"8":  {"deepseek", "deepseek-coder", "https://platform.deepseek.com/api_keys"},
+		"9":  {"together", "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "https://api.together.xyz/v1"},
+		"10": {"mistral", "mistral-large-latest", "https://api.mistral.ai/v1"},
 	}
 
 	choice := strings.TrimSpace(scanner.Text())
@@ -488,16 +492,38 @@ func handleModelSwitch(ag *agent.Agent) {
 	}
 
 	if info, ok := providers[choice]; ok {
-		p, err := ai.CreateFCProvider(info[0], info[1])
+		p, err := ai.CreateFCProvider(info.pType, info.model)
 		if err != nil {
 			color.Red("  Error: %v\n", err)
-			color.Yellow("  Set the API key and try again.\n\n")
+			color.Yellow("  Get key here: %s\n", info.url)
+			fmt.Print("  Paste API Key to set it now (or leave empty): ")
+			if scanner.Scan() {
+				key := strings.TrimSpace(scanner.Text())
+				if key != "" {
+					envKey := strings.ToUpper(info.pType) + "_API_KEY"
+					if info.pType == "claude" {
+						envKey = "ANTHROPIC_API_KEY"
+					}
+					config.SaveAPIKey(envKey, key)
+					godotenv.Load()
+					godotenv.Load(config.GetEnvPath())
+
+					p, err = ai.CreateFCProvider(info.pType, info.model)
+					if err == nil {
+						ag.Provider = p
+						ag.ClearHistory()
+						color.Green("  [OK] API key saved and switched to %s\n\n", p.Name())
+						config.SaveLastModel(info.pType, info.model)
+						return
+					}
+				}
+			}
 			return
 		}
 		ag.Provider = p
 		ag.ClearHistory()
 		color.Green("  [OK] Switched to %s\n\n", p.Name())
-		config.SaveLastModel(info[0], info[1])
+		config.SaveLastModel(info.pType, info.model)
 	}
 }
 
@@ -514,7 +540,7 @@ func runQuickSetup() error {
 	fmt.Println("  2. OpenAI")
 	fmt.Println("  3. Anthropic Claude")
 	fmt.Println("  4. NVIDIA NIM")
-	fmt.Println("  5. Groq")
+	fmt.Println("  5. xAI Grok")
 	fmt.Println("  6. DeepSeek")
 	fmt.Println("  7. Ollama (local, no API key)")
 	fmt.Print("\n  Select > ")
@@ -532,7 +558,7 @@ func runQuickSetup() error {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
 				config.SaveAPIKey("GEMINI_API_KEY", key)
-				godotenv.Load()
+				godotenv.Load(config.GetEnvPath())
 				config.SaveLastModel("gemini", "gemini-2.5-flash")
 			}
 		}
@@ -543,7 +569,7 @@ func runQuickSetup() error {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
 				config.SaveAPIKey("OPENAI_API_KEY", key)
-				godotenv.Load()
+				godotenv.Load(config.GetEnvPath())
 				config.SaveLastModel("openai", "gpt-4o-mini")
 			}
 		}
@@ -554,7 +580,7 @@ func runQuickSetup() error {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
 				config.SaveAPIKey("ANTHROPIC_API_KEY", key)
-				godotenv.Load()
+				godotenv.Load(config.GetEnvPath())
 				config.SaveLastModel("claude", "claude-sonnet-4-20250514")
 			}
 		}
@@ -565,19 +591,19 @@ func runQuickSetup() error {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
 				config.SaveAPIKey("NVIDIA_API_KEY", key)
-				godotenv.Load()
+				godotenv.Load(config.GetEnvPath())
 				config.SaveLastModel("nvidia", "nvidia/nemotron-3-super-120b-a12b")
 			}
 		}
 	case "5":
-		fmt.Println("\n  Get key: https://console.groq.com/keys")
-		fmt.Print("  Paste Groq API Key: ")
+		fmt.Println("\n  Get key: https://console.x.ai/")
+		fmt.Print("  Paste xAI API Key: ")
 		if scanner.Scan() {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
-				config.SaveAPIKey("GROQ_API_KEY", key)
-				godotenv.Load()
-				config.SaveLastModel("groq", "llama-3.1-70b-versatile")
+				config.SaveAPIKey("XAI_API_KEY", key)
+				godotenv.Load(config.GetEnvPath())
+				config.SaveLastModel("xai", "grok-2-1212")
 			}
 		}
 	case "6":
@@ -587,7 +613,7 @@ func runQuickSetup() error {
 			key := strings.TrimSpace(scanner.Text())
 			if key != "" {
 				config.SaveAPIKey("DEEPSEEK_API_KEY", key)
-				godotenv.Load()
+				godotenv.Load(config.GetEnvPath())
 				config.SaveLastModel("deepseek", "deepseek-coder")
 			}
 		}

@@ -7,10 +7,13 @@
 <a name="english"></a>
 ## 🇬🇧 English
 
-### Install
+**Option 1: One-liner (Recommended)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash
+```
 
-**Download** the `curecode` binary for your platform, then:
-
+**Option 2: Manual Download**
+Download the `curecode` binary for your platform, then:
 ```bash
 chmod +x curecode       # Linux/Mac only
 ./curecode --install    # Install
@@ -51,10 +54,13 @@ source ~/.bashrc
 <a name="indonesia"></a>
 ## 🇮🇩 Indonesia
 
-### Install
+**Opsi 1: One-liner (Rekomendasi)**
+```bash
+curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash
+```
 
-**Download** binary `curecode` untuk platform lu, terus:
-
+**Opsi 2: Manual Download**
+Download binary `curecode` untuk platform lu, terus:
 ```bash
 chmod +x curecode       # Khusus Linux/Mac
 ./curecode --install    # Install
