@@ -849,7 +849,7 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "gemini":
 		key := os.Getenv("GEMINI_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("GEMINI_API_KEY not found")
+			return nil, fmt.Errorf("GEMINI_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "gemini-2.5-flash"
@@ -859,7 +859,7 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "openai", "chatgpt":
 		key := os.Getenv("OPENAI_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("OPENAI_API_KEY not found")
+			return nil, fmt.Errorf("OPENAI_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "gpt-4o-mini"
@@ -869,7 +869,7 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "claude", "anthropic":
 		key := os.Getenv("ANTHROPIC_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("ANTHROPIC_API_KEY not found")
+			return nil, fmt.Errorf("ANTHROPIC_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "claude-sonnet-4-20250514"
@@ -885,27 +885,27 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "nvidia":
 		key := os.Getenv("NVIDIA_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("NVIDIA_API_KEY not found")
+			return nil, fmt.Errorf("NVIDIA_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "nvidia/nemotron-3-super-120b-a12b"
 		}
 		return NewGenericOpenAIFCProvider(key, modelName, "https://integrate.api.nvidia.com/v1", "NVIDIA"), nil
 
-	case "groq":
-		key := os.Getenv("GROQ_API_KEY")
+	case "xai", "grok":
+		key := os.Getenv("XAI_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("GROQ_API_KEY not found")
+			return nil, fmt.Errorf("XAI_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
-			modelName = "llama-3.1-70b-versatile"
+			modelName = "grok-2-1212"
 		}
-		return NewGenericOpenAIFCProvider(key, modelName, "https://api.groq.com/openai/v1", "Groq"), nil
+		return NewGenericOpenAIFCProvider(key, modelName, "https://api.x.ai/v1", "xAI"), nil
 
 	case "deepseek":
 		key := os.Getenv("DEEPSEEK_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("DEEPSEEK_API_KEY not found")
+			return nil, fmt.Errorf("DEEPSEEK_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "deepseek-coder"
@@ -915,7 +915,7 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "together":
 		key := os.Getenv("TOGETHER_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("TOGETHER_API_KEY not found")
+			return nil, fmt.Errorf("TOGETHER_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
@@ -925,7 +925,7 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 	case "mistral":
 		key := os.Getenv("MISTRAL_API_KEY")
 		if key == "" {
-			return nil, fmt.Errorf("MISTRAL_API_KEY not found")
+			return nil, fmt.Errorf("MISTRAL_API_KEY not found. Please set it in your .env file")
 		}
 		if modelName == "" {
 			modelName = "mistral-large-latest"
