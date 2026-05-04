@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/broman0x/cure-code/internal/tools"
 	"github.com/broman0x/cure-code/internal/ui"
+	"github.com/broman0x/cure-code/internal/version"
 	"github.com/fatih/color"
 )
 
@@ -59,6 +61,14 @@ type Agent struct {
 	ProcMgr         *ProcessManager
 	RecentToolCalls []string
 	Skills          *SkillRegistry
+	Planning        bool
+	FileCache       map[string]string
+	FileCacheOrder  []string
+
+	CompactThreshold int
+	RecentSymbols    []string
+	Intel            *IntelligenceService
+	RepeatTracker    map[string]int
 }
 
 // [EN] NewAgent initializes a new AI coding agent with the given provider and working directory.
@@ -70,11 +80,11 @@ func NewAgent(provider FunctionCallingProvider, workDir string) *Agent {
 	skills.LoadBuiltin()
 	skills.LoadFromDir(workDir)
 
-	return &Agent{
+	fileCache := make(map[string]string)
+	a := &Agent{
 		Provider:     provider,
 		Tools:        registry,
 		History:      make([]Message, 0),
-		SystemPrompt: BuildSystemPrompt(wsCtx, skills.List()),
 		WorkDir:      workDir,
 		Scanner:      bufio.NewScanner(os.Stdin),
 		MaxTurns:     25,
@@ -82,12 +92,28 @@ func NewAgent(provider FunctionCallingProvider, workDir string) *Agent {
 		YOLO:         false,
 		ProcMgr:      NewProcessManager(),
 		Skills:       skills,
+		FileCache:    make(map[string]string),
+		FileCacheOrder: make([]string, 0),
+		CompactThreshold: 15000, // [EN] Default threshold for compaction | [ID] Ambang batas default untuk pemadatan
+		RecentSymbols:    make([]string, 0),
+		Intel:            NewIntelligenceService(workDir),
+		RepeatTracker:    make(map[string]int),
 	}
+
+	// [EN] Register delegation tool with callback to agent
+	// [ID] Daftarkan tool delegasi dengan callback ke agen
+	registry.Register(&tools.DelegateTool{
+		ProcessPromptFunc: a.SpawnSubAgent,
+	})
+
+	a.SystemPrompt = BuildSystemPrompt(wsCtx, skills.List(), fileCache, nil, nil)
+	return a
 }
 
 // [EN] ProcessPrompt takes a user input, resolves mentions, and starts the agentic loop.
 // [ID] ProcessPrompt menerima input pengguna, menyelesaikan mention, dan memulai loop agentic.
 func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
+	defer a.saveState()
 	a.ToolCallCount = 0
 	a.RecentToolCalls = nil
 
@@ -99,7 +125,14 @@ func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
 	})
 
 	wsCtx := DetectWorkspace(a.WorkDir)
-	a.SystemPrompt = BuildSystemPrompt(wsCtx, a.Skills.List())
+	suggested := a.Intel.SuggestContext(userPrompt, a.History)
+	a.SystemPrompt = BuildSystemPrompt(wsCtx, a.Skills.List(), a.FileCache, a.RecentSymbols, suggested)
+
+	// [EN] Check and compact history if needed
+	// [ID] Cek dan padatkan riwayat jika diperlukan
+	if err := a.checkAndCompact(ctx); err != nil {
+		color.Yellow("  [!] Compaction failed: %v", err)
+	}
 
 	a.renderTaskList()
 	toolDefs := a.Tools.Definitions()
@@ -243,7 +276,15 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 				Name:       tc.Name,
 				Content:    result.Content,
 			})
+			a.checkLoopDetection(tc)
+			if tc.Name == "write_todos" {
+				a.syncPlanMD()
+			}
 		}
+		
+		// [EN] Save state for web dashboard
+		// [ID] Simpan status untuk dashboard web
+		a.saveState()
 	}
 
 	color.Yellow("\n  [!] Agent reached maximum turn limit (%d). Stopping.", a.MaxTurns)
@@ -335,6 +376,10 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 	argsJSON, _ := json.Marshal(tc.Args)
 	callKey := fmt.Sprintf("%s:%s", tc.Name, string(argsJSON))
 
+	// [EN] Pass planning state via context
+	// [ID] Teruskan status planning melalui context
+	ctx = context.WithValue(ctx, tools.PlanningKey, a.Planning)
+
 	a.RecentToolCalls = append(a.RecentToolCalls, callKey)
 	if len(a.RecentToolCalls) > 5 {
 		a.RecentToolCalls = a.RecentToolCalls[1:]
@@ -399,13 +444,38 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 	}
 
 	if tc.Name == "write_todos" && !result.IsError {
-		var payload struct {
-			Todos []Task `json:"todos"`
+		if todosRaw, ok := result.Metadata["todos"]; ok {
+			data, _ := json.Marshal(todosRaw)
+			var tasks []Task
+			if err := json.Unmarshal(data, &tasks); err == nil {
+				a.Tasks = tasks
+				a.renderTaskList()
+				a.syncPlanMD() // [EN] Sync to PLAN.md | [ID] Sinkronisasi ke PLAN.md
+			}
 		}
-		if err := json.Unmarshal([]byte(result.Content), &payload); err == nil {
-			a.Tasks = payload.Todos
-			a.renderTaskList()
+	}
+
+	if tc.Name == "search_symbol" && !result.IsError {
+		if symbols, ok := result.Metadata["symbols"].([]string); ok {
+			a.updateRecentSymbols(symbols)
 		}
+	}
+
+	// [EN] Capture file contents for Smart Context Re-injection
+	// [ID] Tangkap konten file untuk Smart Context Re-injection
+	if (tc.Name == "read_file" || tc.Name == "edit_file") && !result.IsError {
+		if path, ok := tc.Args["file_path"].(string); ok {
+			if tc.Name == "read_file" {
+				a.updateFileCache(path, result.Content)
+			}
+		}
+	}
+
+	if tc.Name == "enter_plan_mode" && !result.IsError {
+		a.Planning = true
+	}
+	if tc.Name == "exit_plan_mode" && !result.IsError {
+		a.Planning = false
 	}
 
 	return result, nil
@@ -534,9 +604,49 @@ func (a *Agent) confirmTool(tc ToolCall) (bool, bool) {
 	}
 }
 
+func (a *Agent) updateFileCache(path, content string) {
+	// [EN] Keep only the last 3 files in cache to save tokens
+	// [ID] Hanya simpan 3 file terakhir di cache untuk menghemat token
+	maxCache := 3
+
+	if _, exists := a.FileCache[path]; !exists {
+		a.FileCacheOrder = append(a.FileCacheOrder, path)
+	}
+	a.FileCache[path] = content
+
+	if len(a.FileCacheOrder) > maxCache {
+		oldest := a.FileCacheOrder[0]
+		a.FileCacheOrder = a.FileCacheOrder[1:]
+		delete(a.FileCache, oldest)
+	}
+}
+
 func (a *Agent) ClearHistory() {
 	a.History = make([]Message, 0)
 	a.ToolCallCount = 0
+	a.RecentSymbols = make([]string, 0)
+}
+
+func (a *Agent) updateRecentSymbols(newSymbols []string) {
+	// [EN] Add new symbols to the beginning
+	// [ID] Tambahkan simbol baru ke bagian awal
+	a.RecentSymbols = append(newSymbols, a.RecentSymbols...)
+
+	// [EN] Keep only unique top 20 symbols for spatial context
+	// [ID] Simpan hanya 20 simbol teratas yang unik untuk konteks spasial
+	seen := make(map[string]bool)
+	unique := make([]string, 0)
+	for _, s := range a.RecentSymbols {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		unique = append(unique, s)
+		if len(unique) >= 20 {
+			break
+		}
+	}
+	a.RecentSymbols = unique
 }
 
 func (a *Agent) UsageSummary() string {
@@ -550,4 +660,132 @@ func (a *Agent) UsageSummary() string {
 		a.Usage.TotalOutputTokens,
 		a.Usage.TotalTokens,
 	)
+}
+
+func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) {
+	// [EN] Create a fresh agent for the sub-task
+	// [ID] Buat agen baru untuk sub-tugas
+	sub := NewAgent(a.Provider, a.WorkDir)
+	sub.YOLO = a.YOLO
+	
+	// [EN] Update system prompt for sub-agent
+	sub.SystemPrompt = sub.SystemPrompt + "\n\n## SUB-AGENT ROLE\nYou are a specialized sub-agent spawned to help with a specific task. Focus ONLY on the requested task. When finished, provide a clear summary and then stop. Do not ask for further tasks."
+
+	err := sub.ProcessPrompt(ctx, task)
+	if err != nil {
+		return "", err
+	}
+
+	// [EN] Get the last message from sub-agent history as the result
+	if len(sub.History) > 0 {
+		lastMsg := sub.History[len(sub.History)-1]
+		return lastMsg.Content, nil
+	}
+
+	return "No summary provided by sub-agent.", nil
+}
+func (a *Agent) checkLoopDetection(tc ToolCall) {
+	// [EN] Enhanced loop detection (RepeatTracker 2.0)
+	// [ID] Deteksi loop tingkat lanjut (RepeatTracker 2.0)
+	argKey := fmt.Sprintf("%s:%v", tc.Name, tc.Args)
+	a.RepeatTracker[argKey]++
+
+	count := a.RepeatTracker[argKey]
+	if count >= 3 {
+		color.HiRed("  [!] Loop detected for tool '%s'. Injecting self-correction prompt.", tc.Name)
+		
+		warning := fmt.Sprintf(`SYSTEM CRITICAL WARNING: You have executed '%s' with the EXACT same parameters %d times.
+Your current strategy is failing to produce new information or progress. 
+
+STRATEGY ADJUSTMENT REQUIRED:
+1. STOP repeating this tool call.
+2. THINK: Why is this not working? Are you looking in the wrong file? Is the search pattern too specific?
+3. TRY: Use a different tool (e.g. if grep_search fails, try list_directory or read_file).
+4. IF STUCK: Ask the user for help using 'ask_user'.
+
+Failure to change strategy will lead to task termination.`, tc.Name, count)
+
+		a.History = append(a.History, Message{
+			Role:    "system",
+			Content: warning,
+		})
+		
+		// [EN] Exponential threshold to be even more aggressive if they keep trying
+		// [ID] Ambang batas eksponensial untuk lebih agresif jika mereka terus mencoba
+		a.RepeatTracker[argKey] = 0 
+	}
+}
+
+func (a *Agent) syncPlanMD() {
+	// [EN] Sync internal task list to PLAN.md for human visibility
+	// [ID] Sinkronisasi daftar tugas internal ke PLAN.md untuk visibilitas manusia
+	if len(a.Tasks) == 0 {
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("# CuRe Code: Project Implementation Plan\n\n")
+	sb.WriteString("This file is automatically maintained by the AI Agent to track autonomous progress. Do not edit manually.\n\n")
+	
+	sb.WriteString("## Current Task Roadmap\n")
+	for i, t := range a.Tasks {
+		statusIcon := " "
+		switch t.Status {
+		case "completed":
+			statusIcon = "x"
+		case "in_progress":
+			statusIcon = "/"
+		case "blocked":
+			statusIcon = "!"
+		case "cancelled":
+			statusIcon = "-"
+		}
+		sb.WriteString(fmt.Sprintf("%d. [%s] %s\n", i+1, statusIcon, t.Description))
+	}
+
+	sb.WriteString(fmt.Sprintf("\n*Last updated: %s*\n", time.Now().Format(time.RFC1123)))
+
+	path := filepath.Join(a.WorkDir, "PLAN.md")
+	_ = os.WriteFile(path, []byte(sb.String()), 0644)
+	color.HiBlack("  [Sync] Project plan synced to PLAN.md")
+}
+
+func (a *Agent) saveState() {
+	// [EN] Save current agent state to a JSON file for web synchronization
+	// [ID] Simpan status agen saat ini ke file JSON untuk sinkronisasi web
+	state := struct {
+		ProjectName   string       `json:"project_name"`
+		RecentSymbols []string     `json:"recent_symbols"`
+		Tasks         []Task       `json:"tasks"`
+		HistoryCount  int          `json:"history_count"`
+		LastTurnTime  time.Time    `json:"last_turn_time"`
+		Usage         SessionUsage `json:"usage"`
+		ToolCallCount int          `json:"tool_call_count"`
+		IsPlanning    bool         `json:"is_planning"`
+		AgentVersion  string       `json:"agent_version"`
+	}{
+		ProjectName:   filepath.Base(a.WorkDir),
+		RecentSymbols: a.RecentSymbols,
+		Tasks:         a.Tasks,
+		HistoryCount:  len(a.History),
+		LastTurnTime:  time.Now(),
+		Usage:         a.Usage,
+		ToolCallCount: a.ToolCallCount,
+		IsPlanning:    a.Planning,
+		AgentVersion:  version.Version, // Galileo
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+
+	// [EN] We save to .curecode/state.json
+	// [ID] Kita simpan ke .curecode/state.json
+	dir := filepath.Join(a.WorkDir, ".curecode")
+	os.MkdirAll(dir, 0755)
+	
+	path := filepath.Join(dir, "state.json")
+	_ = os.WriteFile(path, data, 0644)
+	a.syncPlanMD() // Also ensure PLAN.md is in sync
 }

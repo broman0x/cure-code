@@ -7,7 +7,7 @@
 **AI Coding Agent for Your Terminal**
 
 [![Release](https://img.shields.io/github/v/release/broman0x/cure-code?label=Release&color=blue)](https://github.com/broman0x/cure-code/releases/latest)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20|%20Linux%20|%20macOS-lightgrey.svg)](https://github.com/broman0x/cure-code)
 [![Go](https://img.shields.io/badge/Built%20with-Go-00ADD8.svg)](https://go.dev)
 
@@ -27,13 +27,15 @@ CuRe Code is an **AI coding agent** that can read, write, and edit your code dir
 | Feature | Description |
 |---------|-------------|
 | **Agentic Loop** | AI autonomously reads, writes, edits files and runs commands |
-| **15 Built-in Tools** | Read/Write, Web Search, Project Summary, Git Info, and more |
-| **Multi-Provider** | Google Gemini, OpenAI, Claude, NVIDIA, Groq, DeepSeek, Ollama |
-| **Smart Context** | Tag files directly in your prompt using `@filename` |
+| **Agentic Memory V1**| Persistent symbol tracking, file tree awareness, and state sync |
+| **Autonomous Planning**| Dynamic `PLAN.md` synchronization and task orchestration |
+| **Sub-agent Delegation**| Spawn specialized sub-agents for research and research |
+| **Smart Context** | Proactive file suggestions based on user query and history |
+| **Multi-Provider** | Google Gemini, OpenAI, Claude, NVIDIA, Grok, DeepSeek, Ollama |
+| **Smart Navigation** | Tag files directly in your prompt using `@filename` |
 | **Process Manager** | Run and manage background tasks with `/ps` |
 | **Confirmation Flow** | Dangerous operations require your approval (or use `--yolo`) |
 | **Single Binary** | No Node.js, no Python — just one Go executable |
-| **REPL + One-shot** | Interactive mode or `curecode "fix the tests"` |
 
 ### Built-in Tools
 
@@ -140,24 +142,26 @@ CuRe Code uses a sophisticated **agentic architecture** to solve complex tasks:
 ```
 User Prompt
     ↓
+Proactive Context Suggestions (Intelligence Service)
+    ↓
 AI decides which tools to call
     ↓
-┌──────────────────────────────┐
-│   Tool Execution Loop        │
-│                              │
-│   read_file  → understand    │
-│   edit_file  → make changes  │
-│   shell      → run tests     │
-│   grep_search → find patterns│
-│   web_search → look up docs  │
-│   git_info   → check status  │
-│                              │
-│   (with confirmation for     │
-│    destructive operations)   │
-│                              │
-└──────────────────────────────┘
+┌──────────────────────────────────────┐
+│   Agentic Orchestration Loop         │
+│                                      │
+│   [Plan Mode] → Task Decomposition   │
+│   [Sub-agents] → Specialized Research│
+│   [Memory] → Symbol & File Tracking  │
+│                                      │
+│   read_file  → understand            │
+│   edit_file  → make changes          │
+│   shell      → run tests             │
+│   grep_search → find patterns        │
+│   PLAN.md    ← Auto-Sync             │
+│                                      │
+└──────────────────────────────────────┘
     ↓
-AI provides final response
+AI provides final response & saves session
 ```
 
 The AI has full autonomy to chain multiple tool calls until the task is complete, with a safety limit of 25 turns per prompt.
@@ -230,4 +234,4 @@ GOOS=windows GOARCH=amd64 go build -o curecode.exe .
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+GNU GPLv3 — see [LICENSE](LICENSE) for details.

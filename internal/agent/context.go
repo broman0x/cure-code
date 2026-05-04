@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ type WorkspaceContext struct {
 	GitDirtyCount int
 	Languages     []string
 	HasGit        bool
+	FileTree      string
 }
 
 func DetectWorkspace(workDir string) *WorkspaceContext {
@@ -29,6 +31,7 @@ func DetectWorkspace(workDir string) *WorkspaceContext {
 	}
 
 	ctx.Languages = detectLanguages(workDir)
+	ctx.FileTree = generateFileTree(workDir)
 
 	return ctx
 }
@@ -105,4 +108,54 @@ func getGitDirtyCount(dir string) int {
 		return 0
 	}
 	return len(lines)
+}
+func generateFileTree(dir string) string {
+	// [EN] Generate a lightweight 2-level deep file tree
+	// [ID] Buat pohon file ringan sedalam 2 level
+	var sb strings.Builder
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	count := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if name[0] == '.' && name != ".env" {
+			continue
+		}
+		if name == "vendor" || name == "node_modules" {
+			continue
+		}
+
+		if entry.IsDir() {
+			sb.WriteString(fmt.Sprintf("  %s/\n", name))
+			subEntries, _ := os.ReadDir(filepath.Join(dir, name))
+			subCount := 0
+			for _, sub := range subEntries {
+				if subCount > 10 {
+					sb.WriteString("    ...\n")
+					break
+				}
+				subName := sub.Name()
+				if subName[0] == '.' {
+					continue
+				}
+				if sub.IsDir() {
+					sb.WriteString(fmt.Sprintf("    %s/\n", subName))
+				} else {
+					sb.WriteString(fmt.Sprintf("    %s\n", subName))
+				}
+				subCount++
+			}
+		} else {
+			sb.WriteString(fmt.Sprintf("  %s\n", name))
+		}
+		count++
+		if count > 20 {
+			sb.WriteString("  ...\n")
+			break
+		}
+	}
+	return sb.String()
 }

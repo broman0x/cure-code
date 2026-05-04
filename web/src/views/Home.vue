@@ -9,40 +9,40 @@ import Contributors from '../components/Contributors.vue'
 const { t } = useI18n()
 const os = ref('linux')
 
+const recentSymbols = ref(['Agent', 'SpawnSubAgent', 'saveState', 'checkLoopDetection', 'IntelligenceService'])
+const tasks = ref([
+  { description: 'Phase 1: Memory Compaction', status: 'completed' },
+  { description: 'Phase 2: Code Intelligence', status: 'completed' },
+  { description: 'Phase 3: Task Orchestration', status: 'completed' },
+  { description: 'Phase 4: Web Integration', status: 'in_progress' },
+])
+
 onMounted(() => {
-  const platform = window.navigator.platform.toLowerCase()
-  if (platform.includes('win')) {
-    os.value = 'windows'
-  } else if (platform.includes('mac')) {
-    os.value = 'macos'
-  } else {
-    os.value = 'linux'
-  }
+  const p = window.navigator.platform.toLowerCase()
+  if (p.includes('win')) os.value = 'windows'
+  else if (p.includes('mac')) os.value = 'macos'
 })
 </script>
 
 <template>
-  <div class="home-page">
+  <div class="home">
     <Hero />
-    <Terminal />
+    <section class="demo-section">
+      <div class="container">
+        <Terminal />
+      </div>
+    </section>
+
     <Features />
-    
-    <section id="install" class="section container">
-      <div class="install-box">
-        <template v-if="os === 'windows'">
-          <h2>{{ t('install.title') }} (Windows)</h2>
-          <p>Run this command in PowerShell to install CuRe Code:</p>
-          <div class="cmd-line">
-            <code>iex (irm https://raw.githubusercontent.com/broman0x/cure-code/main/install.ps1)</code>
-          </div>
-        </template>
-        <template v-else>
-          <h2>{{ t('install.title') }} ({{ os === 'macos' ? 'macOS' : 'Linux' }})</h2>
-          <p>{{ t('install.subtitle') }}</p>
-          <div class="cmd-line">
-            <code>curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash</code>
-          </div>
-        </template>
+
+    <section id="install" class="install-section">
+      <div class="container">
+        <div class="install-label">{{ t('install.title') }}</div>
+        <div class="install-os">{{ os === 'windows' ? 'Windows (PowerShell)' : os === 'macos' ? 'macOS / Linux' : 'Linux / macOS' }}</div>
+        <div class="install-cmd">
+          <code v-if="os === 'windows'">iex (irm https://raw.githubusercontent.com/broman0x/cure-code/main/install.ps1)</code>
+          <code v-else>curl -fsSL https://raw.githubusercontent.com/broman0x/cure-code/main/install.sh | bash</code>
+        </div>
       </div>
     </section>
 
@@ -51,45 +51,54 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.install-box {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  padding: 4rem 2rem;
-  border-radius: var(--radius);
-  text-align: center;
+.demo-section {
+  padding: 48px 0;
+  border-bottom: 1px solid var(--line);
 }
 
-h2 {
-  font-size: 2rem;
-  margin-bottom: 1rem;
+
+
+.install-section {
+  padding: 64px 0;
+  border-bottom: 1px solid var(--line);
 }
 
-p {
-  color: var(--text-secondary);
-  margin-bottom: 2rem;
+.install-label {
+  font-size: 0.72rem;
+  font-family: var(--mono);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
 }
 
-.cmd-line {
-  background: var(--bg);
-  padding: 1rem 1.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  display: inline-block;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.95rem;
+.install-os {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+.install-cmd {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 12px 20px;
   max-width: 100%;
   overflow-x: auto;
 }
 
-.cmd-line code {
-  color: var(--primary);
+.install-cmd code {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
-  .cmd-line {
-    font-size: 0.8rem;
-    padding: 1rem;
-    width: 100%;
+  .demo-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

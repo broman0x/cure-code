@@ -1,15 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap');
 
 :root {
-  --bg: #ffffff;
-  --bg-secondary: #f8fafc;
-  --text: #0f172a;
-  --text-secondary: #475569;
-  --accent: #1e293b;
-  --primary: #2563eb;
-  --border: #e2e8f0;
-  --radius: 12px;
-  --transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --bg: #111110;
+  --surface: #191918;
+  --surface-2: #222221;
+  --text: #eeeeec;
+  --text-2: #888884;
+  --text-3: #555552;
+  --line: #2a2a28;
+  --accent: #e8e8e5;
+  --blue: #4a9eff;
+  --green: #3dd68c;
+  --red: #f06548;
+  --font: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
 }
 
 * {
@@ -18,98 +22,43 @@
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background-color: var(--bg);
+  font-family: var(--font);
+  background: var(--bg);
   color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 0 1.5rem;
-  width: 100%;
+  padding: 0 24px;
 }
 
-h1, h2, h3 {
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text);
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
   line-height: 1.2;
 }
 
-.title-text {
-  color: var(--text);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.75rem 1.5rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: var(--transition);
-  text-decoration: none;
+hr {
   border: none;
+  border-top: 1px solid var(--line);
 }
 
-.btn-primary {
-  background: var(--primary);
-  color: #ffffff;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
-}
-
-.btn-outline {
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-
-.btn-outline:hover {
-  background: var(--bg-secondary);
-  border-color: var(--text-secondary);
-}
-
-.section {
-  padding: 8rem 0;
-}
-
-@media (max-width: 768px) {
-  .section {
-    padding: 4rem 0;
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade {
-  animation: fadeIn 0.6s ease-out forwards;
-}
-
-.cmd-box {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  padding: 1rem 1.5rem;
-  border-radius: var(--radius);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.9rem;
-  color: var(--primary);
-  overflow-x: auto;
-  white-space: nowrap;
-}
-
-.mt-4 { margin-top: 1rem; }
-.text-link { color: var(--primary); text-decoration: none; font-weight: 500; }
-.text-link:hover { text-decoration: underline; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
