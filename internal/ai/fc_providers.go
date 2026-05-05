@@ -944,6 +944,16 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 		}
 		return NewGenericOpenAIFCProvider(key, modelName, "https://api.mistral.ai/v1", "Mistral"), nil
 
+	case "openrouter":
+		key := os.Getenv("OPENROUTER_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("OPENROUTER_API_KEY not found. Please set it in your .env file")
+		}
+		if modelName == "" {
+			modelName = "anthropic/claude-3.5-sonnet"
+		}
+		return NewGenericOpenAIFCProvider(key, modelName, "https://openrouter.ai/api/v1", "OpenRouter"), nil
+
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", pType)
 	}
