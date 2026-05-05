@@ -27,7 +27,7 @@ type FunctionCallingProvider interface {
 
 	// [EN] SendWithTools sends a prompt and message history to the AI with a set of tool definitions.
 	// [ID] SendWithTools mengirim prompt dan riwayat pesan ke AI dengan kumpulan definisi tool.
-	SendWithTools(systemPrompt string, messages []Message, toolDefs []tools.ToolDefinition) (*Response, error)
+	SendWithTools(ctx context.Context, systemPrompt string, messages []Message, toolDefs []tools.ToolDefinition) (*Response, error)
 
 	// [EN] SupportsTools returns true if the provider supports tool calling.
 	// [ID] SupportsTools mengembalikan true jika provider mendukung pemanggilan tool.
@@ -37,7 +37,7 @@ type FunctionCallingProvider interface {
 type StreamingProvider interface {
 	FunctionCallingProvider
 
-	SendWithToolsStream(systemPrompt string, messages []Message, toolDefs []tools.ToolDefinition) (<-chan StreamEvent, error)
+	SendWithToolsStream(ctx context.Context, systemPrompt string, messages []Message, toolDefs []tools.ToolDefinition) (<-chan StreamEvent, error)
 
 	SupportsStreaming() bool
 }
@@ -150,7 +150,7 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 		spinner := ui.NewSpinner("Thinking")
 		spinner.Start()
 
-		eventCh, err := sp.SendWithToolsStream(a.SystemPrompt, a.History, toolDefs)
+		eventCh, err := sp.SendWithToolsStream(ctx, a.SystemPrompt, a.History, toolDefs)
 		if err != nil {
 			spinner.Stop()
 			color.Red("\n  Error: %v\n", err)
@@ -300,7 +300,7 @@ func (a *Agent) processWithBatch(ctx context.Context, toolDefs []tools.ToolDefin
 		spinner.Start()
 		startTime := time.Now()
 
-		resp, err := a.Provider.SendWithTools(a.SystemPrompt, a.History, toolDefs)
+		resp, err := a.Provider.SendWithTools(ctx, a.SystemPrompt, a.History, toolDefs)
 		spinner.Stop()
 		elapsed := time.Since(startTime)
 		if err != nil {

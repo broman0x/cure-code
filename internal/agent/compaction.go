@@ -102,7 +102,7 @@ Respond with a structured, concise, yet technically dense summary.`, spatialInfo
 
 	// [EN] We use the provider to generate the summary
 	// [ID] Kita menggunakan provider untuk membuat ringkasan
-	resp, err := a.Provider.SendWithTools(compactPrompt, messages, nil)
+	resp, err := a.Provider.SendWithTools(ctx, compactPrompt, messages, nil)
 	if err != nil {
 		return "", fmt.Errorf("summarization request failed: %v", err)
 	}

@@ -2,6 +2,8 @@ package ai
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +17,7 @@ import (
 
 func (g *GeminiFCProvider) SupportsStreaming() bool { return true }
 
-func (g *GeminiFCProvider) SendWithToolsStream(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
+func (g *GeminiFCProvider) SendWithToolsStream(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:streamGenerateContent?alt=sse&key=%s", g.Model, g.ApiKey)
 
 	reqBody := g.buildRequest(systemPrompt, messages, toolDefs)
@@ -24,7 +26,7 @@ func (g *GeminiFCProvider) SendWithToolsStream(systemPrompt string, messages []a
 		return nil, fmt.Errorf("marshal error: %v", err)
 	}
 
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := g.Client.Do(req)
@@ -142,7 +144,7 @@ func (g *GeminiFCProvider) readGeminiSSE(resp *http.Response, ch chan<- agent.St
 
 func (o *OpenAIFCProvider) SupportsStreaming() bool { return true }
 
-func (o *OpenAIFCProvider) SendWithToolsStream(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
+func (o *OpenAIFCProvider) SendWithToolsStream(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	oaiMsgs := []map[string]interface{}{
@@ -192,7 +194,7 @@ func (o *OpenAIFCProvider) SendWithToolsStream(systemPrompt string, messages []a
 	}
 
 	payload, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+o.ApiKey)
 
@@ -324,7 +326,7 @@ func (o *OpenAIFCProvider) readOpenAISSE(resp *http.Response, ch chan<- agent.St
 
 func (o *GenericOpenAIFCProvider) SupportsStreaming() bool { return true }
 
-func (o *GenericOpenAIFCProvider) SendWithToolsStream(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
+func (o *GenericOpenAIFCProvider) SendWithToolsStream(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
 	url := strings.TrimSuffix(o.BaseURL, "/") + "/chat/completions"
 
 	oaiMsgs := []map[string]interface{}{
@@ -379,7 +381,7 @@ func (o *GenericOpenAIFCProvider) SendWithToolsStream(systemPrompt string, messa
 	}
 
 	payload, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+o.ApiKey)
 
@@ -516,7 +518,7 @@ func (o *GenericOpenAIFCProvider) readSSE(resp *http.Response, ch chan<- agent.S
 
 func (c *AnthropicFCProvider) SupportsStreaming() bool { return true }
 
-func (c *AnthropicFCProvider) SendWithToolsStream(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
+func (c *AnthropicFCProvider) SendWithToolsStream(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
 	url := "https://api.anthropic.com/v1/messages"
 
 	claudeMsgs := make([]map[string]interface{}, 0)
@@ -559,7 +561,7 @@ func (c *AnthropicFCProvider) SendWithToolsStream(systemPrompt string, messages 
 	}
 
 	payload, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", url, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", c.ApiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
@@ -677,7 +679,7 @@ func (c *AnthropicFCProvider) readAnthropicSSE(resp *http.Response, ch chan<- ag
 
 func (o *OllamaFCProvider) SupportsStreaming() bool { return true }
 
-func (o *OllamaFCProvider) SendWithToolsStream(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
+func (o *OllamaFCProvider) SendWithToolsStream(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (<-chan agent.StreamEvent, error) {
 	ollamaMsgs := []map[string]interface{}{
 		{"role": "system", "content": systemPrompt},
 	}
@@ -717,7 +719,7 @@ func (o *OllamaFCProvider) SendWithToolsStream(systemPrompt string, messages []a
 	}
 
 	payload, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", o.BaseURL, strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, "POST", o.BaseURL, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.Client.Do(req)

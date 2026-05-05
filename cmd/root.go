@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/broman0x/cure-code/internal/agent"
@@ -147,9 +150,19 @@ func createAgent() (*agent.Agent, error) {
 	return nil, fmt.Errorf("no AI provider available. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY")
 }
 
+func cleanupTerminal() {
+	if runtime.GOOS != "windows" {
+		cmd := exec.Command("stty", "sane")
+		cmd.Stdin = os.Stdin
+		cmd.Run()
+	}
+}
+
 // [EN] runREPL starts the interactive Read-Eval-Print Loop for the AI agent.
 // [ID] runREPL memulai loop interaktif Read-Eval-Print untuk agen AI.
 func runREPL(sessionID string) error {
+	defer cleanupTerminal()
+
 	config.ResetCache()
 	cfg := config.Load()
 
@@ -234,17 +247,36 @@ func runREPL(sessionID string) error {
 			return
 		}
 
+		// [EN] Temporarily restore terminal to cooked mode so tools and SIGINT work properly
+		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
+		cleanupTerminal()
+
 		if strings.HasPrefix(input, "/") {
 			if handleCommand(input, ag) {
+				cleanupTerminal()
 				os.Exit(0)
 			}
 			return
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-sigCh
+			color.Yellow("\n  [!] Request cancelled by user. Terminating process cleanly...")
+			cancel()
+		}()
+
 		if err := ag.ProcessPrompt(ctx, input); err != nil {
-			color.Red("\n  Error: %v\n", err)
+			if err.Error() != "context canceled" {
+				color.Red("\n  Error: %v\n", err)
+			}
 		}
+
+		signal.Stop(sigCh)
+		cancel()
 	}
 
 	p := prompt.New(
