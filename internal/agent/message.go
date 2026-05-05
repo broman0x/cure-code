@@ -60,10 +60,10 @@ type UsageStats struct {
 }
 
 type SessionUsage struct {
-	TotalInputTokens  int
-	TotalOutputTokens int
-	TotalTokens       int
-	RequestCount      int
+	TotalInputTokens  int `json:"total_input_tokens"`
+	TotalOutputTokens int `json:"total_output_tokens"`
+	TotalTokens       int `json:"total_tokens"`
+	RequestCount      int `json:"request_count"`
 }
 
 func (su *SessionUsage) Add(usage *UsageStats) {

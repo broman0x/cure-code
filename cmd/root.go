@@ -28,30 +28,57 @@ var (
 	showVersion bool
 	resumeID    string
 	yoloMode    bool
+	SkipPause   bool
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "curecode",
 	Short: "AI Coding Agent by bromanprjkt",
 	Args:  cobra.ArbitraryArgs,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
+			SkipPause = true
 			fmt.Printf("CuRe Code v%s\n", version.Version)
 			fmt.Println(version.BuildName + " by " + version.Author)
 			return nil
 		}
 		if doInstall {
+			SkipPause = true
 			return runSelfInstall()
 		}
 		if doUninstall {
+			SkipPause = true
 			return runSelfUninstall()
 		}
 		if resumeID != "" {
+			if len(args) > 0 {
+				SkipPause = true
+				return runOneShot(strings.Join(args, " "), resumeID)
+			}
 			return runREPL(resumeID)
 		}
 		if len(args) > 0 {
-			return runOneShot(strings.Join(args, " "))
+			SkipPause = true
+			return runOneShot(strings.Join(args, " "), "")
 		}
+
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) == 0 {
+			SkipPause = true
+			scanner := bufio.NewScanner(os.Stdin)
+			var input []string
+			for scanner.Scan() {
+				input = append(input, scanner.Text())
+			}
+			if err := scanner.Err(); err != nil {
+				return err
+			}
+			if len(input) > 0 {
+				return runOneShot(strings.Join(input, "\n"), "")
+			}
+		}
+
 		return runREPL("")
 	},
 }
@@ -93,6 +120,7 @@ func createAgent() (*agent.Agent, error) {
 			a.YOLO = yoloMode
 			return a, nil
 		}
+		color.Yellow("  [!] Failed to load last provider (%s): %v. Falling back...", cfg.LastProvider, err)
 	}
 
 	providerOrder := []struct {
@@ -235,8 +263,12 @@ func runREPL(sessionID string) error {
 
 	if len(ag.History) > 0 {
 		configDir := filepath.Dir(config.GetConfigPath())
-		id, _ := agent.SaveSession(ag.History, ag.Tasks, ag.WorkDir, configDir)
-		color.HiBlack("  Session auto-saved as %s", id)
+		id, err := agent.SaveSession(ag.History, ag.Tasks, ag.WorkDir, configDir)
+		if err != nil {
+			color.Red("  [!] Failed to auto-save session: %v", err)
+		} else {
+			color.HiBlack("  Session auto-saved as %s", id)
+		}
 	}
 	ag.ProcMgr.Cleanup()
 
@@ -382,11 +414,28 @@ func handleProcesses(ag *agent.Agent) {
 	}
 }
 
-func runOneShot(prompt string) error {
+func runOneShot(prompt string, sessionID string) error {
 	ag, err := createAgent()
 	if err != nil {
 		return err
 	}
+	
+	if sessionID != "" {
+		configDir := filepath.Dir(config.GetConfigPath())
+		history, tasks, err := agent.LoadSession(sessionID, configDir)
+		if err == nil {
+			ag.History = history
+			ag.Tasks = tasks
+			color.Green("  [OK] Resumed session: %s\n", sessionID)
+		}
+	}
+
+	prompt = strings.TrimSpace(prompt)
+	if strings.HasPrefix(prompt, "/") {
+		handleCommand(prompt, ag)
+		return nil
+	}
+
 	ctx := context.Background()
 	return ag.ProcessPrompt(ctx, prompt)
 }
