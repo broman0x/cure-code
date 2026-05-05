@@ -41,7 +41,7 @@ func NewGeminiFCProvider(apiKey, model string) *GeminiFCProvider {
 func (g *GeminiFCProvider) Name() string        { return "Gemini (" + g.Model + ")" }
 func (g *GeminiFCProvider) SupportsTools() bool { return true }
 
-func (g *GeminiFCProvider) SendWithTools(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
+func (g *GeminiFCProvider) SendWithTools(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", g.Model, g.ApiKey)
 
 	reqBody := g.buildRequest(systemPrompt, messages, toolDefs)
@@ -241,7 +241,7 @@ func NewOpenAIFCProvider(apiKey, model string) *OpenAIFCProvider {
 func (o *OpenAIFCProvider) Name() string        { return "OpenAI (" + o.Model + ")" }
 func (o *OpenAIFCProvider) SupportsTools() bool { return true }
 
-func (o *OpenAIFCProvider) SendWithTools(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
+func (o *OpenAIFCProvider) SendWithTools(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
 	url := "https://api.openai.com/v1/chat/completions"
 
 	oaiMsgs := []map[string]interface{}{
@@ -413,7 +413,7 @@ func NewGenericOpenAIFCProvider(apiKey, model, baseURL, providerName string) *Ge
 func (o *GenericOpenAIFCProvider) Name() string        { return o.ProviderName + " (" + o.Model + ")" }
 func (o *GenericOpenAIFCProvider) SupportsTools() bool { return true }
 
-func (o *GenericOpenAIFCProvider) SendWithTools(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
+func (o *GenericOpenAIFCProvider) SendWithTools(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
 	url := strings.TrimSuffix(o.BaseURL, "/") + "/chat/completions"
 
 	oaiMsgs := []map[string]interface{}{
@@ -583,7 +583,7 @@ func NewAnthropicFCProvider(apiKey, model string) *AnthropicFCProvider {
 func (c *AnthropicFCProvider) Name() string        { return "Claude (" + c.Model + ")" }
 func (c *AnthropicFCProvider) SupportsTools() bool { return true }
 
-func (c *AnthropicFCProvider) SendWithTools(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
+func (c *AnthropicFCProvider) SendWithTools(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
 	url := "https://api.anthropic.com/v1/messages"
 
 	claudeMsgs := make([]map[string]interface{}, 0)
@@ -747,7 +747,7 @@ func NewOllamaFCProvider(model string) *OllamaFCProvider {
 func (o *OllamaFCProvider) Name() string        { return "Ollama (" + o.Model + ")" }
 func (o *OllamaFCProvider) SupportsTools() bool { return true }
 
-func (o *OllamaFCProvider) SendWithTools(systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
+func (o *OllamaFCProvider) SendWithTools(ctx context.Context, systemPrompt string, messages []agent.Message, toolDefs []tools.ToolDefinition) (*agent.Response, error) {
 
 	ollamaMsgs := []map[string]interface{}{
 		{"role": "system", "content": systemPrompt},
@@ -801,7 +801,7 @@ func (o *OllamaFCProvider) SendWithTools(systemPrompt string, messages []agent.M
 
 	payload, _ := json.Marshal(reqBody)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second)
 	defer cancel()
 
 	req, _ := http.NewRequestWithContext(ctx, "POST", o.BaseURL, bytes.NewBuffer(payload))
