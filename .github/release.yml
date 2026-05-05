@@ -1,0 +1,31 @@
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot[bot]
+      - github-actions[bot]
+  categories:
+    - title: 🚀 New Features & Enhancements
+      labels:
+        - feature
+        - enhancement
+    - title: 🧠 Agentic & Provider Updates
+      labels:
+        - ai
+        - provider
+        - memory
+    - title: 🐛 Critical Bug Fixes
+      labels:
+        - fix
+        - bug
+        - critical
+    - title: 🛠 Architecture & Refactoring
+      labels:
+        - refactor
+        - chore
+        - architecture
+    - title: 📚 Documentation
+      labels:
+        - documentation
+        - docs

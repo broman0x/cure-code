@@ -2,6 +2,7 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -799,7 +800,11 @@ func (o *OllamaFCProvider) SendWithTools(systemPrompt string, messages []agent.M
 	}
 
 	payload, _ := json.Marshal(reqBody)
-	req, _ := http.NewRequest("POST", o.BaseURL, bytes.NewBuffer(payload))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "POST", o.BaseURL, bytes.NewBuffer(payload))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := o.Client.Do(req)
@@ -854,6 +859,72 @@ func (o *OllamaFCProvider) parseResponse(body []byte) (*agent.Response, error) {
 	return resp, nil
 }
 
+// [EN] ValidateModel checks if the model exists and warns if it lacks tool support.
+// [ID] ValidateModel memeriksa apakah model ada dan memperingatkan jika tidak mendukung alat.
+func (o *OllamaFCProvider) ValidateModel() error {
+	url := strings.Replace(o.BaseURL, "/chat", "/tags", 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := o.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Ollama not reachable: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("Ollama API error")
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var tagsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &tagsResp); err != nil {
+		return err
+	}
+
+	found := false
+	for _, m := range tagsResp.Models {
+		if m.Name == o.Model || m.Name == o.Model+":latest" || o.Model == m.Name+":latest" {
+			found = true
+			o.Model = m.Name // normalize
+			break
+		}
+	}
+
+	if !found {
+		if len(tagsResp.Models) > 0 {
+			o.Model = tagsResp.Models[0].Name
+			fmt.Printf("  [!] Model not found, auto-switching to: %s\n", o.Model)
+		} else {
+			return fmt.Errorf("no models found in Ollama")
+		}
+	}
+
+	// Tool support warning
+	toolModels := []string{"llama3.1", "qwen2.5", "mistral", "mixtral", "command-r"}
+	supportsTools := false
+	for _, tm := range toolModels {
+		if strings.Contains(strings.ToLower(o.Model), tm) {
+			supportsTools = true
+			break
+		}
+	}
+	if !supportsTools {
+		fmt.Printf("  [!] Warning: Model '%s' may not fully support tool calling.\n", o.Model)
+	}
+
+	return nil
+}
+
 func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, error) {
 	pType = strings.ToLower(pType)
 
@@ -892,7 +963,11 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 		if modelName == "" {
 			modelName = "llama3"
 		}
-		return NewOllamaFCProvider(modelName), nil
+		provider := NewOllamaFCProvider(modelName)
+		if err := provider.ValidateModel(); err != nil {
+			return nil, err
+		}
+		return provider, nil
 
 	case "nvidia":
 		key := os.Getenv("NVIDIA_API_KEY")

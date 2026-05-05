@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/broman0x/cure-code/internal/config"
 	"github.com/broman0x/cure-code/internal/tools"
 	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/broman0x/cure-code/internal/version"
@@ -780,9 +781,9 @@ func (a *Agent) saveState() {
 		return
 	}
 
-	// [EN] We save to .curecode/state.json
-	// [ID] Kita simpan ke .curecode/state.json
-	dir := filepath.Join(a.WorkDir, ".curecode")
+	// [EN] We save to ~/.config/curecode/state.json
+	// [ID] Kita simpan ke ~/.config/curecode/state.json
+	dir := filepath.Dir(config.GetConfigPath())
 	os.MkdirAll(dir, 0755)
 	
 	path := filepath.Join(dir, "state.json")
