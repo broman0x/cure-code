@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -575,6 +576,21 @@ func handleModelSwitch(ag *agent.Agent) {
 	}
 }
 
+func getInteractiveScanner() (*bufio.Scanner, func()) {
+	if runtime.GOOS == "windows" {
+		f, err := os.OpenFile("CONIN$", os.O_RDWR, 0644)
+		if err == nil {
+			return bufio.NewScanner(f), func() { f.Close() }
+		}
+	} else {
+		f, err := os.OpenFile("/dev/tty", os.O_RDONLY, 0)
+		if err == nil {
+			return bufio.NewScanner(f), func() { f.Close() }
+		}
+	}
+	return bufio.NewScanner(os.Stdin), func() {}
+}
+
 func runQuickSetup() error {
 	fmt.Print("\033[H\033[2J")
 
@@ -582,7 +598,9 @@ func runQuickSetup() error {
 	color.HiCyan("  Welcome to CuRe Code Setup!")
 	fmt.Println()
 
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner, cleanup := getInteractiveScanner()
+	defer cleanup()
+	
 	fmt.Println("  Set up your AI provider:")
 	fmt.Println("  1. Google Gemini (recommended)")
 	fmt.Println("  2. OpenAI")

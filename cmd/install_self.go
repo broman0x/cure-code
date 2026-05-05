@@ -134,7 +134,10 @@ func runSelfInstall() error {
 
 	fmt.Println("  Do you want to set up your AI provider now?")
 	fmt.Print("  Continue? [Y/n]: ")
-	scanner := bufio.NewScanner(os.Stdin)
+	
+	scanner, cleanup := getInteractiveScanner()
+	defer cleanup()
+	
 	if !scanner.Scan() || strings.ToLower(strings.TrimSpace(scanner.Text())) != "n" {
 		return runQuickSetup()
 	}
@@ -230,7 +233,9 @@ func runSelfUninstall() error {
 	fmt.Println()
 	fmt.Print("  Continue? [y/N]: ")
 
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner, cleanup := getInteractiveScanner()
+	defer cleanup()
+	
 	if !scanner.Scan() || strings.ToLower(strings.TrimSpace(scanner.Text())) != "y" {
 		color.Cyan("\n  Uninstall cancelled.\n")
 		return nil
