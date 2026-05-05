@@ -3,7 +3,7 @@ package version
 // [EN] Global versioning for CuRe Code.
 // [ID] Penomoran versi global untuk CuRe Code.
 const (
-	Version    = "1.0.4"
+	Version    = "1.0.3"
 	BuildName  = "Gamba"
 	Codename   = "Galileo"
 	Author     = "bromanprjkt"

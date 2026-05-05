@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"bufio"
+
 	"fmt"
 	"os"
 	"os/exec"
