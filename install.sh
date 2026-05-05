@@ -53,7 +53,7 @@ sudo mv "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
 
 echo "✦ Installation complete!"
 echo "✦ Running initial setup..."
-"$INSTALL_DIR/$BINARY_NAME" --install
+"$INSTALL_DIR/$BINARY_NAME" --install < /dev/tty
 
 echo "══════════════════════════════════════════"
 echo "  CuRe Code installed successfully!"
