@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-// [EN] Config represents the application settings stored in a JSON file.
-// [ID] Config mewakili pengaturan aplikasi yang disimpan dalam file JSON.
 type Config struct {
 	Language     string `json:"language"`
 	FirstRun     bool   `json:"first_run"`
@@ -33,8 +31,6 @@ func GetEnvPath() string {
 	return filepath.Join(filepath.Dir(GetConfigPath()), ".env")
 }
 
-// [EN] Load reads the configuration from the disk or returns default values.
-// [ID] Load membaca konfigurasi dari disk atau mengembalikan nilai default.
 func Load() *Config {
 	if globalConfig != nil {
 		return globalConfig
@@ -74,11 +70,32 @@ func ResetCache() {
 	globalConfig = nil
 }
 
+func EnsureConfigDirs() error {
+	configPath := GetConfigPath()
+	dir := filepath.Dir(configPath)
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	sessionDir := filepath.Join(dir, "sessions")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func Save(cfg *Config) error {
 	configPath := GetConfigPath()
 	dir := filepath.Dir(configPath)
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	sessionDir := filepath.Join(dir, "sessions")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
 		return err
 	}
 
@@ -97,15 +114,15 @@ func SaveLastModel(provider, model string) error {
 	return Save(cfg)
 }
 
-func SaveLanguage(language string) error {
-	cfg := Load()
-	cfg.Language = language
-	return Save(cfg)
-}
-
 func SaveFirstRun(status bool) error {
 	cfg := Load()
 	cfg.FirstRun = status
+	return Save(cfg)
+}
+
+func SaveLanguage(language string) error {
+	cfg := Load()
+	cfg.Language = language
 	return Save(cfg)
 }
 

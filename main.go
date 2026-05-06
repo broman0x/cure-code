@@ -7,11 +7,18 @@ import (
 	"runtime"
 
 	"github.com/broman0x/cure-code/cmd"
+	"github.com/broman0x/cure-code/internal/config"
 )
 
 // [EN] main is the entry point of the application. It handles global panic recovery and starts the command execution.
 // [ID] main adalah titik masuk aplikasi. Ini menangani pemulihan panic global dan memulai eksekusi perintah.
 func main() {
+	// [EN] Ensure config directories exist before any command runs
+	// [ID] Pastikan direktori konfigurasi ada sebelum perintah apapun berjalan
+	if err := config.EnsureConfigDirs(); err != nil {
+		fmt.Printf("[!] Config dir error: %v\n", err)
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("\n------------------------------------------------")
