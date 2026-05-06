@@ -1,8 +1,8 @@
 # ISSUES.md - CuRe Code Stress Test Report
 
-**Date:** 2026-05-05  
-**Binary Version:** v1.0.2  
-**Source Version:** v2.0.0 (mismatch - see Issue #13)  
+**Date:** 2026-05-06  
+**Binary Version:** v1.0.3  
+**Source Version:** v1.0.3  
 **Tester:** Hermes Agent (hy3-preview)  
 **Binary Path:** `/home/ev3lynx/.local/bin/curecode`  
 **Config Path:** `~/.config/curecode/config.json`
@@ -333,12 +333,44 @@ curecode --install
 
 ## Recommended Fix Priority
 
-1. **HIGH:** Fix TTY panic (Issue #1) - blocks all non-interactive use
-2. **HIGH:** Fix model hanging (Issue #2) - valid models don't work
-3. **HIGH:** Fix sessions directory (Issue #3) - core feature broken
-4. **MEDIUM:** Fix provider fallback (Issue #5) - config overrides API keys
-5. **MEDIUM:** Fix one-shot TTY requirement (Issue #8) - main use case broken
-6. **LOW:** Clean up pauseExit() (Issue #10) - Linux UX improvement
+All HIGH/MEDIUM issues from v1.0.2 have been fixed in v1.0.3:
+
+| Issue | Severity | Status |
+|-------|----------|--------|
+| #1 TTY panic | HIGH | ✅ FIXED (TTY detection) |
+| #2 Model hang | HIGH | ✅ FIXED (180s timeout) |
+| #3 Sessions dir | HIGH | ✅ FIXED (EnsureConfigDirs) |
+| #5 Provider fallback | MEDIUM | ✅ FIXED (API keys first) |
+| #8 One-shot TTY | HIGH | ✅ FIXED (TTY detection) |
+| #10 pauseExit() | LOW | ✅ FIXED (GOOS check) |
+| #17 Tools listing | MEDIUM | ✅ FIXED |
+| #18 One-shot timeout | HIGH | ✅ FIXED (180s) |
+| #20 Sessions creation | HIGH | ✅ FIXED |
+
+---
+
+## v1.0.3 Changes
+
+### Fixed Issues
+- **Issue #17** - Tools listed at startup now shows available tools count
+- **Issue #18** - One-shot mode has 180s timeout
+- **Issue #20** - Sessions directory created on first run via EnsureConfigDirs()
+
+### Test Results
+```bash
+$ curecode --version
+  [D] Config dirs ready
+CuRe Code v1.0.3
+Gamba by bromanprjkt
+
+$ ls ~/.config/curecode/
+config.json  sessions/  state.json
+
+$ echo "hi" | curecode
+  [D] Config dirs ready
+  [Tool calls] list_directory, read_file, read_file
+  [State] tool_call_count: 3
+```
 
 ---
 
