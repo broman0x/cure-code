@@ -11,6 +11,9 @@ import (
 type contextKey string
 
 const PlanningKey contextKey = "planning"
+const PermissionModeKey contextKey = "permission_mode"
+const AllowedCommandPrefixesKey contextKey = "allowed_command_prefixes"
+const ShellSandboxProfileKey contextKey = "shell_sandbox_profile"
 
 // [EN] Tool defines the interface that all CuRe Code tools must implement.
 // [ID] Tool mendefinisikan antarmuka yang harus diimplementasikan oleh semua tool CuRe Code.
@@ -61,19 +64,29 @@ type ToolDefinition struct {
 // [EN] ToolRegistry manages the collection of available tools for the agent.
 // [ID] ToolRegistry mengelola kumpulan tool yang tersedia untuk agen.
 type ToolRegistry struct {
-	mu    sync.RWMutex
-	tools map[string]Tool
-	order []string
+	mu       sync.RWMutex
+	tools    map[string]Tool
+	deferred map[string]bool
+	order    []string
 }
 
 func NewRegistry() *ToolRegistry {
 	return &ToolRegistry{
-		tools: make(map[string]Tool),
-		order: make([]string, 0),
+		tools:    make(map[string]Tool),
+		deferred: make(map[string]bool),
+		order:    make([]string, 0),
 	}
 }
 
 func (r *ToolRegistry) Register(t Tool) {
+	r.RegisterWithDeferred(t, false)
+}
+
+func (r *ToolRegistry) RegisterDeferred(t Tool) {
+	r.RegisterWithDeferred(t, true)
+}
+
+func (r *ToolRegistry) RegisterWithDeferred(t Tool, deferred bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -82,6 +95,7 @@ func (r *ToolRegistry) Register(t Tool) {
 		r.order = append(r.order, name)
 	}
 	r.tools[name] = t
+	r.deferred[name] = deferred
 }
 
 func (r *ToolRegistry) Get(name string) (Tool, bool) {
@@ -105,11 +119,47 @@ func (r *ToolRegistry) All() []Tool {
 }
 
 func (r *ToolRegistry) Definitions() []ToolDefinition {
+	return r.definitions(false)
+}
+
+func (r *ToolRegistry) CoreDefinitions() []ToolDefinition {
+	return r.definitions(true)
+}
+
+func (r *ToolRegistry) DeferredDefinitions() []ToolDefinition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	defs := make([]ToolDefinition, 0)
+	for _, name := range r.order {
+		if !r.deferred[name] {
+			continue
+		}
+		t := r.tools[name]
+		defs = append(defs, ToolDefinition{
+			Name:        t.Name(),
+			Description: t.Description(),
+			Parameters:  t.ParameterSchema(),
+		})
+	}
+	return defs
+}
+
+func (r *ToolRegistry) IsDeferred(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.deferred[name]
+}
+
+func (r *ToolRegistry) definitions(coreOnly bool) []ToolDefinition {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	defs := make([]ToolDefinition, 0, len(r.order))
 	for _, name := range r.order {
+		if coreOnly && r.deferred[name] {
+			continue
+		}
 		t := r.tools[name]
 		defs = append(defs, ToolDefinition{
 			Name:        t.Name(),
@@ -145,14 +195,17 @@ func NewDefaultRegistry(workDir string) *ToolRegistry {
 	r.Register(NewGrepTool(workDir))
 	r.Register(NewGlobTool(workDir))
 	r.Register(NewAskUserTool())
-	r.Register(NewWebFetchTool())
-	r.Register(NewWebSearchTool())
-	r.Register(NewProjectSummaryTool(workDir))
-	r.Register(NewGitInfoTool(workDir))
-	r.Register(NewSearchSymbolTool(workDir))
 	r.Register(&TodoTool{})
 	r.Register(&EnterPlanModeTool{})
 	r.Register(&ExitPlanModeTool{})
+	r.Register(NewSearchExtraToolsTool(r))
+	r.Register(NewExecuteExtraTool(r))
+
+	r.RegisterDeferred(NewWebFetchTool())
+	r.RegisterDeferred(NewWebSearchTool())
+	r.RegisterDeferred(NewProjectSummaryTool(workDir))
+	r.RegisterDeferred(NewGitInfoTool(workDir))
+	r.RegisterDeferred(NewSearchSymbolTool(workDir))
 
 	return r
 }

@@ -70,6 +70,14 @@ type Agent struct {
 	RecentSymbols    []string
 	Intel            *IntelligenceService
 	RepeatTracker    map[string]int
+
+	PermissionMode       string
+	AllowedCommandPrefix []string
+	ShellSandboxProfile  string
+
+	ModifiedFiles        map[string]bool
+	ValidationRan        bool
+	VerificationPrompted bool
 }
 
 // [EN] NewAgent initializes a new AI coding agent with the given provider and working directory.
@@ -99,6 +107,9 @@ func NewAgent(provider FunctionCallingProvider, workDir string) *Agent {
 		RecentSymbols:    make([]string, 0),
 		Intel:            NewIntelligenceService(workDir),
 		RepeatTracker:    make(map[string]int),
+		PermissionMode:   tools.PermissionModeDefault,
+		ShellSandboxProfile: tools.SandboxOff,
+		ModifiedFiles:    make(map[string]bool),
 	}
 
 	// [EN] Register delegation tool with callback to agent
@@ -117,6 +128,9 @@ func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
 	defer a.saveState()
 	a.ToolCallCount = 0
 	a.RecentToolCalls = nil
+	a.ModifiedFiles = make(map[string]bool)
+	a.ValidationRan = false
+	a.VerificationPrompted = false
 
 	processedPrompt := a.ResolveMentions(userPrompt)
 
@@ -128,6 +142,7 @@ func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
 	wsCtx := DetectWorkspace(a.WorkDir)
 	suggested := a.Intel.SuggestContext(userPrompt, a.History)
 	a.SystemPrompt = BuildSystemPrompt(wsCtx, a.Skills.List(), a.FileCache, a.RecentSymbols, suggested)
+	a.SystemPrompt += "\n\n## RUNTIME SAFETY POLICY\n" + a.runtimePolicyPrompt()
 
 	// [EN] Check and compact history if needed
 	// [ID] Cek dan padatkan riwayat jika diperlukan
@@ -136,7 +151,7 @@ func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
 	}
 
 	a.renderTaskList()
-	toolDefs := a.Tools.Definitions()
+	toolDefs := a.Tools.CoreDefinitions()
 
 	sp, canStream := a.Provider.(StreamingProvider)
 	if canStream && sp.SupportsStreaming() {
@@ -255,6 +270,9 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 
 		if len(collectedToolCalls) == 0 {
 			_ = finishReason
+			if a.maybeInjectVerificationPrompt() {
+				continue
+			}
 			return nil
 		}
 
@@ -335,6 +353,9 @@ func (a *Agent) processWithBatch(ctx context.Context, toolDefs []tools.ToolDefin
 		}
 
 		if len(resp.ToolCalls) == 0 {
+			if a.maybeInjectVerificationPrompt() {
+				continue
+			}
 			return nil
 		}
 
@@ -380,6 +401,9 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 	// [EN] Pass planning state via context
 	// [ID] Teruskan status planning melalui context
 	ctx = context.WithValue(ctx, tools.PlanningKey, a.Planning)
+	ctx = context.WithValue(ctx, tools.PermissionModeKey, a.PermissionMode)
+	ctx = context.WithValue(ctx, tools.AllowedCommandPrefixesKey, a.AllowedCommandPrefix)
+	ctx = context.WithValue(ctx, tools.ShellSandboxProfileKey, a.ShellSandboxProfile)
 
 	a.RecentToolCalls = append(a.RecentToolCalls, callKey)
 	if len(a.RecentToolCalls) > 5 {
@@ -408,7 +432,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 		}, nil
 	}
 
-	if tool.NeedsConfirmation(tc.Args) && !a.AlwaysAllow[tc.Name] {
+	if tool.NeedsConfirmation(tc.Args) && !a.shouldAutoAllow(tc) && !a.AlwaysAllow[tc.Name] {
 		approved, always := a.confirmTool(tc)
 		if !approved {
 			color.Yellow("  [X] Cancelled: %s", tc.Name)
@@ -417,6 +441,8 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 		if always {
 			a.AlwaysAllow[tc.Name] = true
 		}
+	} else if tool.NeedsConfirmation(tc.Args) {
+		color.HiBlack("  [AutoAllow] %s approved by mode/rule", tc.Name)
 	}
 
 	cDim := color.New(color.FgHiBlack).SprintFunc()
@@ -441,6 +467,18 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 			command, _ := tc.Args["command"].(string)
 			pid := a.ProcMgr.Add(command, cmd)
 			fmt.Printf("  [OK] Process tracked as ID %d\n", pid)
+		}
+	}
+
+	if len(result.FilesModified) > 0 {
+		for _, p := range result.FilesModified {
+			a.ModifiedFiles[p] = true
+		}
+	}
+
+	if tc.Name == "run_command" {
+		if command, ok := tc.Args["command"].(string); ok && looksLikeValidationCommand(command) {
+			a.ValidationRan = true
 		}
 	}
 
@@ -605,6 +643,127 @@ func (a *Agent) confirmTool(tc ToolCall) (bool, bool) {
 	}
 }
 
+func (a *Agent) shouldAutoAllow(tc ToolCall) bool {
+	if a.YOLO || a.PermissionMode == tools.PermissionModeBypass {
+		return true
+	}
+
+	if a.PermissionMode == tools.PermissionModeAcceptEdits {
+		return tc.Name == "write_file" || tc.Name == "edit_file"
+	}
+
+	if tc.Name == "run_command" {
+		cmd, _ := tc.Args["command"].(string)
+		return commandMatchesAllowedPrefix(cmd, a.AllowedCommandPrefix)
+	}
+
+	return false
+}
+
+func commandMatchesAllowedPrefix(command string, prefixes []string) bool {
+	command = strings.TrimSpace(command)
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(command, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *Agent) SetPermissionMode(mode string) error {
+	switch mode {
+	case tools.PermissionModeDefault, tools.PermissionModeAcceptEdits, tools.PermissionModeBypass:
+		a.PermissionMode = mode
+		return nil
+	default:
+		return fmt.Errorf("invalid permission mode: %s", mode)
+	}
+}
+
+func (a *Agent) AddAllowedCommandPrefix(prefix string) {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return
+	}
+	a.AllowedCommandPrefix = append(a.AllowedCommandPrefix, prefix)
+}
+
+func (a *Agent) SetShellSandboxProfile(profile string) error {
+	switch profile {
+	case tools.SandboxOff, tools.SandboxWorkspaceWrite, tools.SandboxWorkspaceWriteNoNet, tools.SandboxReadOnly:
+		a.ShellSandboxProfile = profile
+		return nil
+	default:
+		return fmt.Errorf("invalid sandbox profile: %s", profile)
+	}
+}
+
+func (a *Agent) runtimePolicyPrompt() string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("- Permission mode: %s\n", a.PermissionMode))
+	b.WriteString(fmt.Sprintf("- Shell sandbox profile: %s\n", a.ShellSandboxProfile))
+	if len(a.AllowedCommandPrefix) == 0 {
+		b.WriteString("- Allowed shell prefixes: (none)\n")
+	} else {
+		b.WriteString("- Allowed shell prefixes:\n")
+		for _, p := range a.AllowedCommandPrefix {
+			b.WriteString(fmt.Sprintf("  - %s\n", p))
+		}
+	}
+	b.WriteString("- If run_command is blocked, adapt strategy instead of retrying the same command.\n")
+	return b.String()
+}
+
+func (a *Agent) maybeInjectVerificationPrompt() bool {
+	if a.VerificationPrompted {
+		return false
+	}
+	if len(a.ModifiedFiles) == 0 || a.ValidationRan {
+		return false
+	}
+
+	// In accept_edits mode without allowed shell prefixes, validation commands are likely blocked.
+	if a.PermissionMode == tools.PermissionModeAcceptEdits && len(a.AllowedCommandPrefix) == 0 {
+		return false
+	}
+
+	a.VerificationPrompted = true
+	color.HiYellow("  [Verify] Files were modified but no validation command was detected. Requesting verification before final answer.")
+	a.History = append(a.History, Message{
+		Role: "system",
+		Content: `Before you provide the final answer:
+1. Run at least one validation command appropriate to this project (tests/build/lint).
+2. If validation cannot be run, explain exactly why.
+3. Then provide the final summary.`,
+	})
+	return true
+}
+
+func looksLikeValidationCommand(command string) bool {
+	c := strings.ToLower(strings.TrimSpace(command))
+	if c == "" {
+		return false
+	}
+	hints := []string{
+		"go test", "go vet", "go build",
+		"npm test", "npm run test", "npm run build", "npm run lint",
+		"pnpm test", "pnpm run test", "pnpm run build", "pnpm run lint",
+		"yarn test", "yarn build", "yarn lint",
+		"pytest", "cargo test", "cargo clippy", "cargo check",
+		"make test", "make build", "make lint", "mvn test", "gradle test",
+	}
+	for _, h := range hints {
+		if strings.HasPrefix(c, h) {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Agent) updateFileCache(path, content string) {
 	// [EN] Keep only the last 3 files in cache to save tokens
 	// [ID] Hanya simpan 3 file terakhir di cache untuk menghemat token
@@ -668,6 +827,9 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	// [ID] Buat agen baru untuk sub-tugas
 	sub := NewAgent(a.Provider, a.WorkDir)
 	sub.YOLO = a.YOLO
+	sub.PermissionMode = a.PermissionMode
+	sub.AllowedCommandPrefix = append([]string{}, a.AllowedCommandPrefix...)
+	sub.ShellSandboxProfile = a.ShellSandboxProfile
 	
 	// [EN] Update system prompt for sub-agent
 	sub.SystemPrompt = sub.SystemPrompt + "\n\n## SUB-AGENT ROLE\nYou are a specialized sub-agent spawned to help with a specific task. Focus ONLY on the requested task. When finished, provide a clear summary and then stop. Do not ask for further tasks."

@@ -31,6 +31,9 @@ var (
 	showVersion bool
 	resumeID    string
 	yoloMode    bool
+	permissionMode string
+	allowCommands  []string
+	sandboxProfile string
 	SkipPause   bool
 )
 
@@ -108,6 +111,9 @@ func init() {
 	rootCmd.Flags().BoolVar(&doUninstall, "uninstall", false, "uninstall from PATH")
 	rootCmd.Flags().StringVar(&resumeID, "resume", "", "resume a saved session by ID")
 	rootCmd.Flags().BoolVar(&yoloMode, "yolo", false, "skip tool execution confirmations")
+	rootCmd.Flags().StringVar(&permissionMode, "permission-mode", "default", "permission mode: default | accept_edits | bypass")
+	rootCmd.Flags().StringArrayVar(&allowCommands, "allow-command", nil, "auto-allow run_command when command starts with this prefix (repeatable)")
+	rootCmd.Flags().StringVar(&sandboxProfile, "sandbox-profile", "off", "shell sandbox profile: off | workspace-write | workspace-write-no-network | read-only")
 	cobra.MousetrapHelpText = ""
 }
 
@@ -151,6 +157,9 @@ func createAgent() (*agent.Agent, error) {
 				color.Green("  [OK] Using %s (via %s)\n", p.name, p.envKey)
 				a := agent.NewAgent(provider, mustGetwd())
 				a.YOLO = yoloMode
+				if err := configureAgentRuntime(a); err != nil {
+					return nil, err
+				}
 				return a, nil
 			}
 		}
@@ -162,6 +171,9 @@ func createAgent() (*agent.Agent, error) {
 	if err == nil {
 		a := agent.NewAgent(provider, mustGetwd())
 		a.YOLO = yoloMode
+		if err := configureAgentRuntime(a); err != nil {
+			return nil, err
+		}
 		return a, nil
 	}
 
@@ -172,12 +184,51 @@ func createAgent() (*agent.Agent, error) {
 		if err == nil {
 			a := agent.NewAgent(provider, mustGetwd())
 			a.YOLO = yoloMode
+			if err := configureAgentRuntime(a); err != nil {
+				return nil, err
+			}
 			return a, nil
 		}
 		color.Yellow("  [!] Failed to load last provider (%s): %v. Falling back...\n", cfg.LastProvider, err)
 	}
 
 	return nil, fmt.Errorf("no AI provider available. Set GEMINI_API_KEY, OPENAI_API_KEY, or ensure Ollama is running")
+}
+
+func configureAgentRuntime(a *agent.Agent) error {
+	mode := permissionMode
+	if yoloMode {
+		mode = "bypass"
+	}
+	if err := a.SetPermissionMode(mode); err != nil {
+		return err
+	}
+	if err := a.SetShellSandboxProfile(sandboxProfile); err != nil {
+		return err
+	}
+	for _, prefix := range allowCommands {
+		if err := validateAllowCommandPrefix(prefix); err != nil {
+			return err
+		}
+		a.AddAllowedCommandPrefix(prefix)
+	}
+	return nil
+}
+
+func validateAllowCommandPrefix(prefix string) error {
+	p := strings.TrimSpace(strings.ToLower(prefix))
+	if p == "" {
+		return fmt.Errorf("allow-command prefix cannot be empty")
+	}
+	banned := []string{
+		"sh -c", "bash -c", "zsh -c", "python", "python3", "node -e", "perl -e", "ruby -e",
+	}
+	for _, b := range banned {
+		if p == b || strings.HasPrefix(p, b+" ") {
+			return fmt.Errorf("allow-command prefix '%s' is too broad/risky", prefix)
+		}
+	}
+	return nil
 }
 
 func cleanupTerminal() {
@@ -205,6 +256,9 @@ func runREPL(sessionID string) error {
 
 	ag, err := createAgent()
 	if err != nil {
+		if isRuntimeConfigError(err) {
+			return err
+		}
 		return runProviderSetup(err)
 	}
 
@@ -233,6 +287,10 @@ func runREPL(sessionID string) error {
 
 	fmt.Printf("  %s %s\n", cActive("Provider:"), ag.Provider.Name())
 	fmt.Printf("  %s %s\n", cActive("Tools:"), strings.Join(toolNames, ", "))
+	fmt.Printf("  %s %s | sandbox=%s\n", cActive("Mode:"), ag.PermissionMode, ag.ShellSandboxProfile)
+	if len(ag.AllowedCommandPrefix) > 0 {
+		fmt.Printf("  %s %s\n", cActive("Allowed command prefixes:"), strings.Join(ag.AllowedCommandPrefix, " | "))
+	}
 	fmt.Printf("  %s\n", cSubtle("Type your prompt, @ to tag files, or / for commands"))
 	fmt.Println()
 
@@ -247,8 +305,12 @@ func runREPL(sessionID string) error {
 				{Text: "/save", Description: "Save the current session"},
 				{Text: "/resume", Description: "Resume a previous session"},
 				{Text: "/model", Description: "Switch AI model"},
+				{Text: "/mode", Description: "Show/set permission mode"},
+				{Text: "/sandbox", Description: "Show/set shell sandbox profile"},
+				{Text: "/allowcmd", Description: "Add allowed shell prefix"},
 				{Text: "/usage", Description: "Show token usage stats"},
 				{Text: "/version", Description: "Show version info"},
+				{Text: "/doctor", Description: "Run environment diagnostics"},
 			}
 		}
 		if strings.HasPrefix(word, "@") {
@@ -362,6 +424,15 @@ func handleCommand(input string, ag *agent.Agent) bool {
 	case "/model":
 		handleModelSwitch(ag)
 
+	case "/mode":
+		handlePermissionMode(parts, ag)
+
+	case "/sandbox":
+		handleSandboxProfile(parts, ag)
+
+	case "/allowcmd":
+		handleAllowCommandPrefix(input, ag)
+
 	case "/compact":
 		ag.ClearHistory()
 		color.Green("  [OK] Conversation history cleared")
@@ -389,6 +460,9 @@ func handleCommand(input string, ag *agent.Agent) bool {
 	case "/version":
 		fmt.Printf("  CuRe Code v%s\n", version.GetVersion())
 		fmt.Printf("  Architecture: Agentic Memory v1.0\n\n")
+
+	case "/doctor":
+		runDoctor(ag)
 
 	default:
 		color.Yellow("  Unknown command: %s (type /help for commands)\n\n", cmd)
@@ -478,6 +552,54 @@ func handleProcesses(ag *agent.Agent) {
 	}
 }
 
+func handlePermissionMode(parts []string, ag *agent.Agent) {
+	if len(parts) == 1 {
+		color.HiCyan("  Permission mode: %s\n\n", ag.PermissionMode)
+		return
+	}
+	mode := strings.TrimSpace(parts[1])
+	if err := ag.SetPermissionMode(mode); err != nil {
+		color.Red("  %v\n\n", err)
+		return
+	}
+	color.Green("  [OK] Permission mode set to: %s\n\n", ag.PermissionMode)
+}
+
+func handleSandboxProfile(parts []string, ag *agent.Agent) {
+	if len(parts) == 1 {
+		color.HiCyan("  Sandbox profile: %s\n\n", ag.ShellSandboxProfile)
+		return
+	}
+	profile := strings.TrimSpace(parts[1])
+	if err := ag.SetShellSandboxProfile(profile); err != nil {
+		color.Red("  %v\n\n", err)
+		return
+	}
+	color.Green("  [OK] Sandbox profile set to: %s\n\n", ag.ShellSandboxProfile)
+}
+
+func handleAllowCommandPrefix(input string, ag *agent.Agent) {
+	prefix := strings.TrimSpace(strings.TrimPrefix(input, "/allowcmd"))
+	if prefix == "" {
+		if len(ag.AllowedCommandPrefix) == 0 {
+			color.HiBlack("  No allowed command prefixes configured.\n\n")
+			return
+		}
+		color.HiCyan("  Allowed command prefixes:")
+		for _, p := range ag.AllowedCommandPrefix {
+			fmt.Printf("  - %s\n", p)
+		}
+		fmt.Println()
+		return
+	}
+	if err := validateAllowCommandPrefix(prefix); err != nil {
+		color.Red("  %v\n\n", err)
+		return
+	}
+	ag.AddAllowedCommandPrefix(prefix)
+	color.Green("  [OK] Added allowed command prefix: %s\n\n", prefix)
+}
+
 func runOneShot(prompt string, sessionID string) error {
 	ag, err := createAgent()
 	if err != nil {
@@ -535,11 +657,15 @@ func showHelp() {
 	fmt.Printf("  %s  %s\n", cCmd("/clear   "), cDesc("Clear screen"))
 	fmt.Printf("  %s  %s\n", cCmd("/compact "), cDesc("Clear conversation history"))
 	fmt.Printf("  %s  %s\n", cCmd("/model   "), cDesc("Switch AI provider/model"))
+	fmt.Printf("  %s  %s\n", cCmd("/mode    "), cDesc("Show/set permission mode"))
+	fmt.Printf("  %s  %s\n", cCmd("/sandbox "), cDesc("Show/set shell sandbox profile"))
+	fmt.Printf("  %s  %s\n", cCmd("/allowcmd"), cDesc("Add allowed shell command prefix"))
 	fmt.Printf("  %s  %s\n", cCmd("/usage   "), cDesc("Show session token usage"))
 	fmt.Printf("  %s  %s\n", cCmd("/save    "), cDesc("Save current session"))
 	fmt.Printf("  %s  %s\n", cCmd("/resume  "), cDesc("Resume a saved session"))
 	fmt.Printf("  %s  %s\n", cCmd("/ps      "), cDesc("List/stop background processes"))
 	fmt.Printf("  %s  %s\n", cCmd("/version "), cDesc("Show version"))
+	fmt.Printf("  %s  %s\n", cCmd("/doctor  "), cDesc("Run environment diagnostics"))
 	fmt.Printf("  %s  %s\n", cCmd("/exit    "), cDesc("Exit CuRe Code"))
 	fmt.Println()
 }
@@ -775,6 +901,67 @@ func runProviderSetup(originalErr error) error {
 	fmt.Println("  GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,")
 	fmt.Println("  NVIDIA_API_KEY, GROQ_API_KEY, DEEPSEEK_API_KEY")
 	return originalErr
+}
+
+func isRuntimeConfigError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "invalid permission mode") ||
+		strings.Contains(msg, "invalid sandbox profile") ||
+		strings.Contains(msg, "allow-command prefix")
+}
+
+func runDoctor(ag *agent.Agent) {
+	configPath := config.GetConfigPath()
+	configDir := filepath.Dir(configPath)
+	sessionDir := filepath.Join(configDir, "sessions")
+
+	ws := agent.DetectWorkspace(ag.WorkDir)
+	sessions, _ := agent.ListSessions(configDir)
+	_, goErr := exec.LookPath("go")
+	goInPath := goErr == nil
+
+	providerKeys := []string{
+		"GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+		"NVIDIA_API_KEY", "XAI_API_KEY", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY",
+	}
+	availableKeys := make([]string, 0)
+	for _, k := range providerKeys {
+		if os.Getenv(k) != "" {
+			availableKeys = append(availableKeys, k)
+		}
+	}
+
+	coreTools := ag.Tools.CoreDefinitions()
+	deferredTools := ag.Tools.DeferredDefinitions()
+
+	color.HiCyan("\n  Diagnostics")
+	fmt.Printf("  - Version: %s\n", version.GetVersion())
+	fmt.Printf("  - Provider: %s\n", ag.Provider.Name())
+	fmt.Printf("  - Permission mode: %s\n", ag.PermissionMode)
+	fmt.Printf("  - Shell sandbox: %s\n", ag.ShellSandboxProfile)
+	fmt.Printf("  - Allowed command prefixes: %d\n", len(ag.AllowedCommandPrefix))
+	fmt.Printf("  - Config path: %s\n", configPath)
+	fmt.Printf("  - Sessions dir: %s (%d sessions)\n", sessionDir, len(sessions))
+	fmt.Printf("  - Workspace: %s\n", ag.WorkDir)
+	if ws.HasGit {
+		fmt.Printf("  - Git: %s (%d uncommitted)\n", ws.GitBranch, ws.GitDirtyCount)
+	} else {
+		fmt.Printf("  - Git: not a repository\n")
+	}
+	if goInPath {
+		fmt.Printf("  - Go in PATH: yes\n")
+	} else {
+		fmt.Printf("  - Go in PATH: no\n")
+	}
+	if len(availableKeys) > 0 {
+		fmt.Printf("  - API keys detected: %s\n", strings.Join(availableKeys, ", "))
+	} else {
+		fmt.Printf("  - API keys detected: none\n")
+	}
+	fmt.Printf("  - Tools: %d core, %d deferred\n\n", len(coreTools), len(deferredTools))
 }
 
 func mustGetwd() string {

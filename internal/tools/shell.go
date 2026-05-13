@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -13,6 +14,19 @@ import (
 type ShellTool struct {
 	workDir string
 }
+
+const (
+	PermissionModeDefault     = "default"
+	PermissionModeAcceptEdits = "accept_edits"
+	PermissionModeBypass      = "bypass"
+)
+
+const (
+	SandboxOff                  = "off"
+	SandboxWorkspaceWrite       = "workspace-write"
+	SandboxWorkspaceWriteNoNet  = "workspace-write-no-network"
+	SandboxReadOnly             = "read-only"
+)
 
 func NewShellTool(workDir string) *ShellTool {
 	return &ShellTool{workDir: workDir}
@@ -24,7 +38,8 @@ func (t *ShellTool) Description() string {
 	return `Execute a shell command in the user's terminal and return the output.
 Use this for running tests, installing dependencies, checking git status, building projects, etc.
 Commands are executed in the project's working directory.
-The command will be terminated if it runs longer than 60 seconds.`
+The command will be terminated if it runs longer than 60 seconds.
+For long-running commands, either pass background=true or suffix the command with '&'.`
 }
 
 func (t *ShellTool) ParameterSchema() map[string]interface{} {
@@ -69,7 +84,7 @@ func (t *ShellTool) validateCommand(command string) string {
 	}
 
 	if len(warnings) > 0 {
-		return "⚠️  Security Warning: " + strings.Join(warnings, ", ")
+		return "Security Warning: " + strings.Join(warnings, ", ")
 	}
 	return ""
 }
@@ -84,7 +99,29 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 		return &ToolResult{Content: "Error: command is required", IsError: true}, nil
 	}
 
-	isBackground, _ := params["background"].(bool)
+	requestedBackground, _ := params["background"].(bool)
+	command = strings.TrimSpace(command)
+	command, impliedBackground := normalizeBackgroundCommand(command)
+	isBackground := requestedBackground || impliedBackground
+	permissionMode := getPermissionMode(ctx)
+	allowedPrefixes := getAllowedCommandPrefixes(ctx)
+	sandboxProfile := getSandboxProfile(ctx)
+
+	if permissionMode == PermissionModeAcceptEdits && isLikelyNonEditCommand(command) && !isAllowedByPrefix(command, allowedPrefixes) {
+		return &ToolResult{
+			Content: "Permission mode 'accept_edits' blocks non-edit shell commands unless they match an allowed prefix.",
+			Display: "[X] Blocked by permission mode: accept_edits",
+			IsError: true,
+		}, nil
+	}
+
+	if errText := enforceSandboxProfile(command, sandboxProfile, t.workDir); errText != "" {
+		return &ToolResult{
+			Content: errText,
+			Display: fmt.Sprintf("[X] Blocked by sandbox profile '%s'", sandboxProfile),
+			IsError: true,
+		}, nil
+	}
 
 	var cmd *exec.Cmd
 	var execCtx context.Context
@@ -110,8 +147,12 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 		if err != nil {
 			return &ToolResult{Content: fmt.Sprintf("Error starting background command: %v", err), IsError: true}, nil
 		}
+		backgroundNote := ""
+		if impliedBackground && !requestedBackground {
+			backgroundNote = " (auto-detected from trailing &)"
+		}
 		return &ToolResult{
-			Content:       fmt.Sprintf("Background process started (PID %d).", cmd.Process.Pid),
+			Content:       fmt.Sprintf("Background process started (PID %d)%s.", cmd.Process.Pid, backgroundNote),
 			Display:       fmt.Sprintf("[X] Started background: %s", truncateStr(command, 60)),
 			BackgroundCmd: cmd,
 		}, nil
@@ -143,8 +184,12 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 	if err != nil {
 		exitErr, isExitError := err.(*exec.ExitError)
 		if isExitError {
+			hint := ""
+			if exitErr.ExitCode() == -1 && strings.Contains(command, "pkill -f") {
+				hint = "\n\nHint: 'pkill -f' can match its own invocation. Try a safer pattern, e.g. pkill -f \"[n]ode index.js\"."
+			}
 			return &ToolResult{
-				Content: fmt.Sprintf("Command exited with code %d.\n\n%s", exitErr.ExitCode(), result),
+				Content: fmt.Sprintf("Command exited with code %d.\n\n%s%s", exitErr.ExitCode(), result, hint),
 				Display: fmt.Sprintf("[!] Command exited with code %d: %s", exitErr.ExitCode(), truncateStr(command, 60)),
 				IsError: true,
 			}, nil
@@ -176,6 +221,146 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 		Content: result,
 		Display: display,
 	}, nil
+}
+
+func normalizeBackgroundCommand(command string) (string, bool) {
+	trimmed := strings.TrimSpace(command)
+	if !strings.HasSuffix(trimmed, "&") || strings.HasSuffix(trimmed, "&&") {
+		return trimmed, false
+	}
+	withoutAmp := strings.TrimSpace(strings.TrimSuffix(trimmed, "&"))
+	if withoutAmp == "" {
+		return trimmed, false
+	}
+	return withoutAmp, true
+}
+
+func getPermissionMode(ctx context.Context) string {
+	if v, ok := ctx.Value(PermissionModeKey).(string); ok && v != "" {
+		return v
+	}
+	return PermissionModeDefault
+}
+
+func getAllowedCommandPrefixes(ctx context.Context) []string {
+	if v, ok := ctx.Value(AllowedCommandPrefixesKey).([]string); ok {
+		return v
+	}
+	return nil
+}
+
+func getSandboxProfile(ctx context.Context) string {
+	if v, ok := ctx.Value(ShellSandboxProfileKey).(string); ok && v != "" {
+		return v
+	}
+	return SandboxOff
+}
+
+func isAllowedByPrefix(command string, prefixes []string) bool {
+	trimmed := strings.TrimSpace(command)
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isLikelyNonEditCommand(command string) bool {
+	c := strings.TrimSpace(strings.ToLower(command))
+	if c == "" {
+		return false
+	}
+
+	editPrefixes := []string{
+		"go test", "go fmt", "go vet", "npm test", "npm run test", "pnpm test", "yarn test",
+		"pytest", "cargo test", "cargo fmt", "cargo clippy", "make test", "make fmt",
+	}
+	for _, p := range editPrefixes {
+		if strings.HasPrefix(c, p) {
+			return false
+		}
+	}
+	return true
+}
+
+func enforceSandboxProfile(command string, profile string, workDir string) string {
+	switch profile {
+	case SandboxOff:
+		return ""
+	case SandboxReadOnly:
+		if isLikelyWriteCommand(command) {
+			return "Sandbox(read-only) blocked this command because it appears to modify files."
+		}
+	case SandboxWorkspaceWrite:
+		if p := firstDangerousAbsolutePath(command, workDir); p != "" {
+			return fmt.Sprintf("Sandbox(workspace-write) blocked write-like path outside workspace: %s", p)
+		}
+	case SandboxWorkspaceWriteNoNet:
+		if looksLikeNetworkCommand(command) {
+			return "Sandbox(workspace-write-no-network) blocked this command because it appears to use network access."
+		}
+		if p := firstDangerousAbsolutePath(command, workDir); p != "" {
+			return fmt.Sprintf("Sandbox(workspace-write-no-network) blocked write-like path outside workspace: %s", p)
+		}
+	default:
+		return fmt.Sprintf("Unknown sandbox profile: %s", profile)
+	}
+	return ""
+}
+
+func isLikelyWriteCommand(command string) bool {
+	c := " " + strings.ToLower(command) + " "
+	writeSignals := []string{
+		" rm ", " mv ", " cp ", " touch ", " mkdir ", " rmdir ", " chmod ", " chown ",
+		" sed -i", " perl -i", " tee ", " truncate ", " dd ",
+	}
+	for _, s := range writeSignals {
+		if strings.Contains(c, s) {
+			return true
+		}
+	}
+	return strings.Contains(command, ">") || strings.Contains(command, ">>")
+}
+
+func looksLikeNetworkCommand(command string) bool {
+	c := " " + strings.ToLower(command) + " "
+	netSignals := []string{" curl ", " wget ", " ssh ", " scp ", " rsync ", " nc ", " netcat "}
+	for _, s := range netSignals {
+		if strings.Contains(c, s) {
+			return true
+		}
+	}
+	return strings.Contains(c, " http://") || strings.Contains(c, " https://")
+}
+
+func firstDangerousAbsolutePath(command string, workDir string) string {
+	if !isLikelyWriteCommand(command) {
+		return ""
+	}
+
+	cleanWorkDir := filepath.Clean(workDir)
+	for _, tok := range strings.Fields(command) {
+		if !strings.HasPrefix(tok, "/") {
+			continue
+		}
+		p := strings.Trim(tok, "\"'`,;")
+		if p == "/" || p == "" {
+			return p
+		}
+		if strings.HasPrefix(p, "/tmp/") || p == "/tmp" {
+			continue
+		}
+		clean := filepath.Clean(p)
+		if !strings.HasPrefix(clean, cleanWorkDir+"/") && clean != cleanWorkDir {
+			return clean
+		}
+	}
+	return ""
 }
 
 func truncateStr(s string, maxLen int) string {
