@@ -206,16 +206,16 @@ func ensurePathInShellRC(installDir string) error {
 
 func runSelfUninstall() error {
 	var installDir, exePath, configDir string
+	
+	home, _ := os.UserHomeDir()
+	configDir = filepath.Join(home, ".curecode")
 
 	if runtime.GOOS == "windows" {
 		installDir = filepath.Join(os.Getenv("LocalAppData"), "curecode")
 		exePath = filepath.Join(installDir, "curecode.exe")
-		configDir = filepath.Join(os.Getenv("APPDATA"), "curecode")
 	} else {
-		home, _ := os.UserHomeDir()
 		installDir = filepath.Join(home, ".local", "bin")
 		exePath = filepath.Join(installDir, "curecode")
-		configDir = filepath.Join(home, ".config", "curecode")
 	}
 
 	fmt.Println()
