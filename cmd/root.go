@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/c-bata/go-prompt"
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
@@ -401,9 +403,30 @@ func runREPL(sessionID string) error {
 		cleanupTerminal()
 		
 		if len(input) > 250 || strings.Contains(input, "\n") {
-			// [EN] Restore cursor to before the prompt, clear down, and render collapsed view
-			// [ID] Kembalikan kursor ke sebelum prompt, hapus ke bawah, dan render tampilan ringkas
-			fmt.Print("\033[u\033[J")
+			// [EN] Get terminal width for accurate line counting
+			width, _, err := term.GetSize(int(os.Stdout.Fd()))
+			if err != nil || width <= 0 {
+				width = 100 // Safe fallback
+			}
+
+			lines := 1
+			currentLineLen := 9 // len("  cure > ")
+			for _, r := range input {
+				if r == '\n' {
+					lines++
+					currentLineLen = 0
+				} else {
+					currentLineLen++
+					if currentLineLen >= width {
+						lines++
+						currentLineLen = 0
+					}
+				}
+			}
+
+			// [EN] go-prompt outputs \r\n when Enter is pressed. We move UP 'lines' times to the start of the prompt.
+			// [ID] Pindah kursor ke atas sebanyak 'lines' baris dan bersihkan sisa teks panjang.
+			fmt.Printf("\033[%dF\033[J", lines)
 			
 			preview := input
 			if len(preview) > 50 {
@@ -457,7 +480,7 @@ func runREPL(sessionID string) error {
 	p := prompt.New(
 		executor,
 		completer,
-		prompt.OptionPrefix("\033[s  cure > "),
+		prompt.OptionPrefix("  cure > "),
 		prompt.OptionPrefixTextColor(prompt.Cyan),
 		prompt.OptionSuggestionBGColor(prompt.DarkGray),
 		prompt.OptionSelectedSuggestionBGColor(prompt.Cyan),
