@@ -27,6 +27,7 @@ type promptModel struct {
 	lastKeystroke time.Time
 	suggestions   []Suggestion
 	suggestionIdx int
+	scrolled      bool
 	completer     func(string) []Suggestion
 }
 
@@ -40,7 +41,6 @@ func initialPromptModel(completer func(string) []Suggestion) promptModel {
 	ti.SetHeight(1)
 	ti.MaxHeight = 10
 	ti.ShowLineNumbers = false
-	// We MUST enable InsertNewline so that pastes containing \n are not cropped by textarea!
 	ti.KeyMap.InsertNewline.SetEnabled(true)
 
 	return promptModel{
@@ -73,6 +73,7 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case tea.KeyUp:
 			if len(m.suggestions) > 0 {
+				m.scrolled = true
 				m.suggestionIdx--
 				if m.suggestionIdx < 0 {
 					m.suggestionIdx = len(m.suggestions) - 1
@@ -81,6 +82,7 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.KeyDown:
 			if len(m.suggestions) > 0 {
+				m.scrolled = true
 				m.suggestionIdx++
 				if m.suggestionIdx >= len(m.suggestions) {
 					m.suggestionIdx = 0
@@ -88,7 +90,14 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case tea.KeyTab, tea.KeyEnter:
-			if len(m.suggestions) > 0 {
+			isEnter := msg.Type == tea.KeyEnter
+			if isEnter && (msg.Alt || isBurst) {
+				m.textarea, cmd = m.textarea.Update(msg)
+				return m, cmd
+			}
+
+			// If Tab is pressed OR (Enter is pressed AND user scrolled through suggestions)
+			if len(m.suggestions) > 0 && (!isEnter || (isEnter && m.scrolled)) {
 				val := m.textarea.Value()
 				idx := strings.LastIndexAny(val, " \n\t")
 				word := val
@@ -96,21 +105,17 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					word = val[idx+1:]
 				}
 
-				// Send backspaces to delete the current word
 				for i := 0; i < len(word); i++ {
 					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 				}
 				
-				// Insert the selected suggestion
-				m.textarea.InsertString(m.suggestions[m.suggestionIdx].Text)
+				m.textarea.InsertString(m.suggestions[m.suggestionIdx].Text + " ")
 				m.suggestions = nil
+				m.scrolled = false
 				return m, nil
 			}
-			if msg.Type == tea.KeyEnter {
-				if msg.Alt || isBurst {
-					m.textarea, cmd = m.textarea.Update(msg)
-					return m, cmd
-				}
+
+			if isEnter {
 				val := strings.TrimSpace(m.textarea.Value())
 				if val == "" {
 					return m, nil
@@ -118,6 +123,8 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.result.Text = val
 				return m, tea.Quit
 			}
+		case tea.KeyRunes, tea.KeySpace, tea.KeyBackspace:
+			m.scrolled = false
 		}
 
 	case error:
@@ -129,7 +136,6 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	if m.completer != nil {
-		// Just use a simple regex or string split on the current line to get the last word
 		val := m.textarea.Value()
 		idx := strings.LastIndexAny(val, " \n\t")
 		word := val
@@ -208,7 +214,6 @@ func (m promptModel) View() string {
 				dStyle = suggestionDescStyle
 			}
 
-			// Do not render description column if there are no descriptions at all
 			if maxDescLen == 0 {
 				sb.WriteString("  " + tStyle.Render(s.Text) + "\n")
 			} else {
