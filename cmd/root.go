@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/broman0x/cure-code/internal/ui"
@@ -282,6 +283,17 @@ func cleanupTerminal() {
 	}
 }
 
+func flushWindowsInput() {
+	if runtime.GOOS == "windows" {
+		handle, err := syscall.GetStdHandle(syscall.STD_INPUT_HANDLE)
+		if err == nil {
+			kernel32 := syscall.NewLazyDLL("kernel32.dll")
+			flush := kernel32.NewProc("FlushConsoleInputBuffer")
+			flush.Call(uintptr(handle))
+		}
+	}
+}
+
 // [EN] runREPL starts the interactive Read-Eval-Print Loop for the AI agent.
 // [ID] runREPL memulai loop interaktif Read-Eval-Print untuk agen AI.
 func runREPL(sessionID string) error {
@@ -387,6 +399,9 @@ func runREPL(sessionID string) error {
 
 		signal.Stop(sigCh)
 		cancel()
+		
+		// [EN] Flush any remaining inputs (like stray paste buffers) to prevent infinite loops on Windows
+		flushWindowsInput()
 	}
 
 	// [EN] Main input loop using Bubbletea TUI instead of go-prompt
