@@ -36,7 +36,8 @@ func initialPromptModel(completer func(string) []Suggestion) promptModel {
 	ti.Prompt = "  cure > "
 	ti.CharLimit = 0
 	ti.SetWidth(100)
-	ti.SetHeight(2) // At least 2 lines to show multiline capability
+	ti.SetHeight(1)
+	ti.MaxHeight = 10
 	ti.ShowLineNumbers = false
 	// We MUST enable InsertNewline so that pastes containing \n are not cropped by textarea!
 	ti.KeyMap.InsertNewline.SetEnabled(true)
