@@ -200,7 +200,9 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 		eventCh, err := sp.SendWithToolsStream(ctx, a.SystemPrompt, a.History, toolDefs)
 		if err != nil {
 			spinner.Stop()
-			color.Red("\n  Error: %v\n", err)
+			if !strings.Contains(err.Error(), "context canceled") {
+				color.Red("\n  Error: %v\n", err)
+			}
 			return err
 		}
 
