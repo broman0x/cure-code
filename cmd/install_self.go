@@ -37,7 +37,7 @@ func runSelfInstall() error {
 	color.HiBlack("  Setup & Installer • v" + version.Version)
 	fmt.Println()
 
-	if filepath.Clean(exePath) == filepath.Clean(destPath) {
+	if strings.EqualFold(filepath.Clean(exePath), filepath.Clean(destPath)) {
 		color.Yellow("  Already installed and running from install location!")
 		fmt.Println()
 
