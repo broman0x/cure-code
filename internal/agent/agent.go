@@ -480,7 +480,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 	cDim := color.New(color.FgHiBlack).SprintFunc()
 	cTool := color.New(color.FgHiCyan, color.Bold).SprintFunc()
 	toolDisplay := a.formatToolHeader(tc)
-	fmt.Printf("\n  %s %s %s\n", color.HiCyanString("◆"), cTool(tc.Name), cDim(toolDisplay))
+	fmt.Printf("\n  %s %s %s\n", color.HiCyanString("┌─▶"), cTool(tc.Name), cDim(toolDisplay))
 
 	result, err := tool.Execute(ctx, tc.Args)
 	if err != nil {
@@ -489,9 +489,9 @@ func (a *Agent) executeToolCall(ctx context.Context, tc ToolCall) (*tools.ToolRe
 	}
 
 	if result.IsError {
-		fmt.Printf("  %s %s\n", color.RedString("✖"), color.RedString(result.Display))
+		fmt.Printf("  %s %s\n", color.HiRedString("└─✖"), color.RedString(result.Display))
 	} else if result.Display != "" {
-		fmt.Printf("  %s %s\n", color.HiGreenString("✔"), color.HiWhiteString(result.Display))
+		fmt.Printf("  %s %s\n", color.HiBlackString("└─ "), color.HiBlackString(result.Display))
 	}
 
 	if result.BackgroundCmd != nil {
@@ -564,11 +564,11 @@ func (a *Agent) renderTaskList() {
 		statusIcon := "[ ]"
 		switch t.Status {
 		case "in_progress":
-			statusIcon = color.HiCyanString("➤")
+			statusIcon = color.HiCyanString("[>]")
 		case "completed":
-			statusIcon = color.GreenString("✔")
+			statusIcon = color.GreenString("[x]")
 		case "cancelled":
-			statusIcon = color.HiBlackString("✖")
+			statusIcon = color.HiBlackString("[-]")
 		case "blocked":
 			statusIcon = color.RedString("!")
 		}
