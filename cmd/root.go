@@ -399,34 +399,6 @@ func runREPL(sessionID string) error {
 		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
 		cleanupTerminal()
 
-		// [EN] If the input has multiple lines or is very long (a paste), collapse it
-		// [ID] Jika input memiliki banyak baris atau sangat panjang (hasil paste), lipat tampilannya
-		if len(input) > 250 || strings.Contains(input, "\n") {
-			// Move cursor up by the number of newlines in the input + 1 (for the prompt line itself)
-			lines := strings.Count(input, "\n") + 1
-			
-			// Approximate wrapped lines (assuming 80 char width minimum as fallback)
-			for _, line := range strings.Split(input, "\n") {
-				if len(line) > 80 {
-					lines += len(line) / 80
-				}
-			}
-
-			// Move up and clear
-			fmt.Printf("\033[%dA\033[J", lines)
-			
-			// Print the collapsed version
-			preview := input
-			if len(preview) > 50 {
-				preview = preview[:47] + "..."
-			}
-			preview = strings.ReplaceAll(preview, "\n", " ")
-			
-			cPrompt := color.New(color.FgCyan).SprintFunc()
-			cDim := color.New(color.FgHiBlack).SprintFunc()
-			fmt.Printf("  %s %s %s\n", cPrompt("cure >"), preview, cDim(fmt.Sprintf("[#%d chars]", len(input))))
-		}
-
 		if strings.HasPrefix(input, "/") {
 			if handleCommand(input, ag) {
 				ag.ProcMgr.Cleanup()
