@@ -30,6 +30,15 @@ type promptModel struct {
 	scrolled      bool
 	completer     func(string) []Suggestion
 	pendingPastes map[string]string
+	burstBuffer   strings.Builder
+}
+
+type flushBurstMsg struct{}
+
+func flushBurstCmd() tea.Cmd {
+	return tea.Tick(30*time.Millisecond, func(t time.Time) tea.Msg {
+		return flushBurstMsg{}
+	})
 }
 
 func initialPromptModel(completer func(string) []Suggestion) promptModel {
@@ -61,6 +70,29 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case flushBurstMsg:
+		if m.burstBuffer.Len() > 0 && time.Since(m.lastKeystroke) >= 25*time.Millisecond {
+			pasted := m.burstBuffer.String()
+			m.burstBuffer.Reset()
+			
+			if len(pasted) > 80 || strings.Contains(pasted, "\n") {
+				placeholder := fmt.Sprintf("[Pasted Content %d chars]", len(pasted))
+				m.pendingPastes[placeholder] = pasted
+				m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(placeholder), Paste: true})
+				return m, cmd
+			}
+			
+			for _, r := range pasted {
+				if r == '\n' {
+					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyEnter})
+				} else {
+					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+				}
+			}
+			return m, nil
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if msg.Paste {
 			pasted := string(msg.Runes)
@@ -77,11 +109,42 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		now := time.Now()
-		isBurst := false
-		if !m.lastKeystroke.IsZero() && now.Sub(m.lastKeystroke) < 25*time.Millisecond {
-			isBurst = true
-		}
+		elapsed := now.Sub(m.lastKeystroke)
 		m.lastKeystroke = now
+
+		isPrintable := msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace || msg.Type == tea.KeyEnter || msg.Type == tea.KeyTab
+
+		if elapsed < 25*time.Millisecond && isPrintable {
+			if msg.Type == tea.KeyEnter {
+				m.burstBuffer.WriteString("\n")
+			} else if msg.Type == tea.KeySpace {
+				m.burstBuffer.WriteString(" ")
+			} else if msg.Type == tea.KeyTab {
+				m.burstBuffer.WriteString("\t")
+			} else {
+				m.burstBuffer.WriteString(string(msg.Runes))
+			}
+			return m, flushBurstCmd()
+		}
+
+		if m.burstBuffer.Len() > 0 {
+			pasted := m.burstBuffer.String()
+			m.burstBuffer.Reset()
+			if len(pasted) > 80 || strings.Contains(pasted, "\n") {
+				placeholder := fmt.Sprintf("[Pasted Content %d chars]", len(pasted))
+				m.pendingPastes[placeholder] = pasted
+				m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(placeholder), Paste: true})
+				cmds = append(cmds, cmd)
+			} else {
+				for _, r := range pasted {
+					if r == '\n' {
+						m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyEnter})
+					} else {
+						m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+					}
+				}
+			}
+		}
 
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
@@ -107,7 +170,7 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.KeyTab, tea.KeyEnter:
 			isEnter := msg.Type == tea.KeyEnter
-			if isEnter && (msg.Alt || isBurst) {
+			if isEnter && msg.Alt {
 				m.textarea, cmd = m.textarea.Update(msg)
 				return m, cmd
 			}
