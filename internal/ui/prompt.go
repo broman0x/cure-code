@@ -154,18 +154,30 @@ func (m promptModel) View() string {
 	}
 	if m.result.Text != "" {
 		val := m.result.Text
-		if len(val) > 250 || strings.Contains(val, "\n") {
+		if len(val) > 80 || strings.Contains(val, "\n") {
 			preview := val
 			if len(preview) > 50 {
 				preview = preview[:47] + "..."
 			}
 			preview = strings.ReplaceAll(preview, "\n", " ")
-			// Dim text for the char count
 			return fmt.Sprintf("  \033[36mcure >\033[0m %s \033[90m[#%d chars]\033[0m\n", preview, len(val))
 		}
 		return fmt.Sprintf("  \033[36mcure >\033[0m %s\n", val)
 	}
-	return m.textarea.View()
+	view := m.textarea.View()
+	if len(m.suggestions) > 0 {
+		var sb strings.Builder
+		sb.WriteString("\n")
+		for i, s := range m.suggestions {
+			if i == m.suggestionIdx {
+				sb.WriteString(fmt.Sprintf("\033[36m> %s\033[0m \033[90m%s\033[0m\n", s.Text, s.Description))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s \033[90m%s\033[0m\n", s.Text, s.Description))
+			}
+		}
+		view += sb.String()
+	}
+	return view
 }
 
 func RunPrompt(completer func(string) []Suggestion) (PromptResult, error) {
