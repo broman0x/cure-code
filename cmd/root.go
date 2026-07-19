@@ -378,7 +378,7 @@ func runREPL(sessionID string) error {
 		}()
 		
 		if err := ag.ProcessPrompt(ctx, input); err != nil {
-			if err.Error() != "context canceled" {
+			if !strings.Contains(err.Error(), "context canceled") {
 				color.Red("\n  Error: %v\n", err)
 			} else {
 				color.HiBlack("\n  [!] Dibatalkan (Ctrl+C)\n")

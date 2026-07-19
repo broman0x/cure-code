@@ -37,7 +37,7 @@ func initialPromptModel() promptModel {
 }
 
 func (m promptModel) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, tea.EnableBracketedPaste)
 }
 
 func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
