@@ -35,11 +35,17 @@ func NewShellTool(workDir string) *ShellTool {
 func (t *ShellTool) Name() string { return "run_command" }
 
 func (t *ShellTool) Description() string {
-	return `Execute a shell command in the user's terminal and return the output.
+	osName := runtime.GOOS
+	shellName := "sh"
+	if osName == "windows" {
+		shellName = "powershell"
+	}
+	return fmt.Sprintf(`Execute a shell command in the user's terminal and return the output.
+OS: %s, Shell: %s.
 Use this for running tests, installing dependencies, checking git status, building projects, etc.
 Commands are executed in the project's working directory.
 The command will be terminated if it runs longer than 60 seconds.
-For long-running commands, either pass background=true or suffix the command with '&'.`
+For long-running commands, either pass background=true or suffix the command with '&'.`, osName, shellName)
 }
 
 func (t *ShellTool) ParameterSchema() map[string]interface{} {
@@ -135,7 +141,7 @@ func (t *ShellTool) Execute(ctx context.Context, params map[string]interface{}) 
 	}
 
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(execCtx, "cmd", "/C", command)
+		cmd = exec.CommandContext(execCtx, "powershell", "-NoProfile", "-Command", command)
 	} else {
 		cmd = exec.CommandContext(execCtx, "sh", "-c", command)
 	}
