@@ -14,27 +14,37 @@ type PromptResult struct {
 	Canceled bool
 }
 
+type Suggestion struct {
+	Text        string
+	Description string
+}
+
 type promptModel struct {
 	textarea      textarea.Model
 	err           error
 	result        PromptResult
 	lastKeystroke time.Time
+	suggestions   []Suggestion
+	suggestionIdx int
+	completer     func(string) []Suggestion
 }
 
-func initialPromptModel() promptModel {
+func initialPromptModel(completer func(string) []Suggestion) promptModel {
 	ti := textarea.New()
 	ti.Placeholder = "Type your prompt (Alt+Enter for newline, @ to tag files)..."
 	ti.Focus()
 	ti.Prompt = "  cure > "
 	ti.CharLimit = 0
 	ti.SetWidth(100)
-	ti.SetHeight(1) 
+	ti.SetHeight(2) // At least 2 lines to show multiline capability
 	ti.ShowLineNumbers = false
-	ti.KeyMap.InsertNewline.SetEnabled(false) 
+	// We MUST enable InsertNewline so that pastes containing \n are not cropped by textarea!
+	ti.KeyMap.InsertNewline.SetEnabled(true)
 
 	return promptModel{
-		textarea: ti,
-		err:      nil,
+		textarea:  ti,
+		err:       nil,
+		completer: completer,
 	}
 }
 
@@ -59,18 +69,53 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			m.result.Canceled = true
 			return m, tea.Quit
-		case tea.KeyEnter:
-			if msg.Alt || isBurst {
-				m.textarea.InsertString("\n")
+		case tea.KeyUp:
+			if len(m.suggestions) > 0 {
+				m.suggestionIdx--
+				if m.suggestionIdx < 0 {
+					m.suggestionIdx = len(m.suggestions) - 1
+				}
 				return m, nil
 			}
-			val := strings.TrimSpace(m.textarea.Value())
-			if val == "" {
-				// Prevent empty submits from eating leading newlines in pastes
+		case tea.KeyDown:
+			if len(m.suggestions) > 0 {
+				m.suggestionIdx++
+				if m.suggestionIdx >= len(m.suggestions) {
+					m.suggestionIdx = 0
+				}
 				return m, nil
 			}
-			m.result.Text = val
-			return m, tea.Quit
+		case tea.KeyTab, tea.KeyEnter:
+			if len(m.suggestions) > 0 {
+				val := m.textarea.Value()
+				idx := strings.LastIndexAny(val, " \n\t")
+				word := val
+				if idx != -1 {
+					word = val[idx+1:]
+				}
+
+				// Send backspaces to delete the current word
+				for i := 0; i < len(word); i++ {
+					m.textarea, _ = m.textarea.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+				}
+				
+				// Insert the selected suggestion
+				m.textarea.InsertString(m.suggestions[m.suggestionIdx].Text)
+				m.suggestions = nil
+				return m, nil
+			}
+			if msg.Type == tea.KeyEnter {
+				if msg.Alt || isBurst {
+					m.textarea, cmd = m.textarea.Update(msg)
+					return m, cmd
+				}
+				val := strings.TrimSpace(m.textarea.Value())
+				if val == "" {
+					return m, nil
+				}
+				m.result.Text = val
+				return m, tea.Quit
+			}
 		}
 
 	case error:
@@ -80,6 +125,26 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.textarea, cmd = m.textarea.Update(msg)
 	cmds = append(cmds, cmd)
+
+	if m.completer != nil {
+		// Just use a simple regex or string split on the current line to get the last word
+		val := m.textarea.Value()
+		idx := strings.LastIndexAny(val, " \n\t")
+		word := val
+		if idx != -1 {
+			word = val[idx+1:]
+		}
+
+		if word != "" {
+			m.suggestions = m.completer(word)
+			if m.suggestionIdx >= len(m.suggestions) {
+				m.suggestionIdx = 0
+			}
+		} else {
+			m.suggestions = nil
+		}
+	}
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -103,8 +168,8 @@ func (m promptModel) View() string {
 	return m.textarea.View()
 }
 
-func RunPrompt() (PromptResult, error) {
-	p := tea.NewProgram(initialPromptModel())
+func RunPrompt(completer func(string) []Suggestion) (PromptResult, error) {
+	p := tea.NewProgram(initialPromptModel(completer))
 	m, err := p.Run()
 	if err != nil {
 		return PromptResult{}, err

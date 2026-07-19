@@ -404,9 +404,57 @@ func runREPL(sessionID string) error {
 		flushWindowsInput()
 	}
 
+	completer := func(word string) []ui.Suggestion {
+		if strings.HasPrefix(word, "/") {
+			return []ui.Suggestion{
+				{Text: "/help", Description: "Show help message"},
+				{Text: "/exit", Description: "Exit the agent"},
+				{Text: "/clear", Description: "Clear the screen"},
+				{Text: "/compact", Description: "Clear conversation history"},
+				{Text: "/save", Description: "Save the current session"},
+				{Text: "/resume", Description: "Resume a previous session"},
+				{Text: "/model", Description: "Switch AI model"},
+				{Text: "/mode", Description: "Show/set permission mode"},
+				{Text: "/sandbox", Description: "Show/set shell sandbox profile"},
+				{Text: "/allowcmd", Description: "Add allowed shell prefix"},
+				{Text: "/mcp", Description: "Manage MCP servers"},
+				{Text: "/learn", Description: "Teach the agent a new persistent rule"},
+				{Text: "/grill-me", Description: "Activate interactive interview mode"},
+				{Text: "/usage", Description: "Show token usage stats"},
+				{Text: "/version", Description: "Show version info"},
+				{Text: "/doctor", Description: "Run environment diagnostics"},
+			}
+		}
+		if strings.HasPrefix(word, "@") {
+			path := strings.TrimPrefix(word, "@")
+			dir := "."
+			if idx := strings.LastIndex(path, "/"); idx != -1 {
+				dir = path[:idx]
+			}
+			fullDir := filepath.Join(ag.WorkDir, dir)
+			entries, _ := os.ReadDir(fullDir)
+			var suggestions []ui.Suggestion
+			for _, entry := range entries {
+				name := entry.Name()
+				if entry.IsDir() {
+					name += "/"
+				}
+				p := filepath.Join(dir, name)
+				if dir == "." {
+					p = name
+				}
+				if strings.HasPrefix(p, path) {
+					suggestions = append(suggestions, ui.Suggestion{Text: "@" + p})
+				}
+			}
+			return suggestions
+		}
+		return nil
+	}
+
 	// [EN] Main input loop using Bubbletea TUI instead of go-prompt
 	for {
-		res, err := ui.RunPrompt()
+		res, err := ui.RunPrompt(completer)
 		if err != nil {
 			color.Red("  [!] UI Error: %v\n", err)
 			break
