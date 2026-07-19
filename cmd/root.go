@@ -398,6 +398,7 @@ func runREPL(sessionID string) error {
 		// [EN] Temporarily restore terminal to cooked mode so tools and SIGINT work properly
 		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
 		cleanupTerminal()
+		fmt.Println()
 
 		if strings.HasPrefix(input, "/") {
 			if handleCommand(input, ag) {
