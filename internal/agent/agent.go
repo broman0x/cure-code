@@ -274,7 +274,9 @@ func (a *Agent) processWithStreaming(ctx context.Context, sp StreamingProvider, 
 
 			case StreamError:
 				spinner.Stop()
-				color.Red("\n  Error: %v\n", event.Error)
+				if !strings.Contains(event.Error.Error(), "context canceled") {
+					color.Red("\n  Error: %v\n", event.Error)
+				}
 				return event.Error
 			}
 		}
@@ -354,7 +356,9 @@ func (a *Agent) processWithBatch(ctx context.Context, toolDefs []tools.ToolDefin
 		spinner.Stop()
 		elapsed := time.Since(startTime)
 		if err != nil {
-			color.Red("\n  Error: %v\n", err)
+			if !strings.Contains(err.Error(), "context canceled") {
+				color.Red("\n  Error: %v\n", err)
+			}
 			return err
 		}
 

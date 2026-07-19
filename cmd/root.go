@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -398,6 +399,23 @@ func runREPL(sessionID string) error {
 		// [EN] Temporarily restore terminal to cooked mode so tools and SIGINT work properly
 		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
 		cleanupTerminal()
+		
+		if len(input) > 250 || strings.Contains(input, "\n") {
+			// [EN] Restore cursor to before the prompt, clear down, and render collapsed view
+			// [ID] Kembalikan kursor ke sebelum prompt, hapus ke bawah, dan render tampilan ringkas
+			fmt.Print("\033[u\033[J")
+			
+			preview := input
+			if len(preview) > 50 {
+				preview = preview[:47] + "..."
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			
+			cPrompt := color.New(color.FgCyan).SprintFunc()
+			cDim := color.New(color.FgHiBlack).SprintFunc()
+			fmt.Printf("  %s %s %s\n", cPrompt("cure >"), preview, cDim(fmt.Sprintf("[#%d chars]", len(input))))
+		}
+
 		fmt.Println()
 
 		if strings.HasPrefix(input, "/") {
@@ -412,22 +430,34 @@ func runREPL(sessionID string) error {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		
-		// Stub for signal.Notify - simplified for build compatibility
-		// In production this would use proper signal handling
+		// [EN] Setup SIGINT (Ctrl+C) handler to cancel generation gracefully (simulating ESC stop)
+		// [ID] Atur handler SIGINT (Ctrl+C) untuk membatalkan proses dengan aman (sebagai ganti ESC)
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt)
+		go func() {
+			select {
+			case <-sigCh:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
 		
 		if err := ag.ProcessPrompt(ctx, input); err != nil {
 			if err.Error() != "context canceled" {
 				color.Red("\n  Error: %v\n", err)
+			} else {
+				color.HiBlack("\n  [!] Dibatalkan (Ctrl+C)\n")
 			}
 		}
 
+		signal.Stop(sigCh)
 		cancel()
 	}
 
 	p := prompt.New(
 		executor,
 		completer,
-		prompt.OptionPrefix("  cure > "),
+		prompt.OptionPrefix("\033[s  cure > "),
 		prompt.OptionPrefixTextColor(prompt.Cyan),
 		prompt.OptionSuggestionBGColor(prompt.DarkGray),
 		prompt.OptionSelectedSuggestionBGColor(prompt.Cyan),
