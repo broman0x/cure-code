@@ -8,23 +8,26 @@ import (
 	"strings"
 )
 
+type MCPServerConfig struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
 type Config struct {
-	Language     string `json:"language"`
-	FirstRun     bool   `json:"first_run"`
-	LastModel    string `json:"last_model"`
-	LastProvider string `json:"last_provider"`
-	InstallPath  string `json:"install_path"`
-	Version      string `json:"version"`
+	Language     string                     `json:"language"`
+	FirstRun     bool                       `json:"first_run"`
+	LastModel    string                     `json:"last_model"`
+	LastProvider string                     `json:"last_provider"`
+	InstallPath  string                     `json:"install_path"`
+	Version      string                     `json:"version"`
+	MCPServers   map[string]MCPServerConfig `json:"mcp_servers,omitempty"`
 }
 
 var globalConfig *Config
 
 func GetConfigPath() string {
 	home, _ := os.UserHomeDir()
-	if os.Getenv("APPDATA") != "" {
-		return filepath.Join(os.Getenv("APPDATA"), "CuReCode", "config.json")
-	}
-	return filepath.Join(home, ".config", "curecode", "config.json")
+	return filepath.Join(home, ".curecode", "config.json")
 }
 
 func GetEnvPath() string {

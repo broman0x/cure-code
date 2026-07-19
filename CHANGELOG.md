@@ -2,10 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-07-19
+**Advanced Memory, File Watcher & Sandbox Hardening**
+
+### Added
+- **Persistent Memory & `/learn` Command**: CuRe Code now has a long-term memory system. You can use the `/learn` command in the CLI to teach the agent specific coding rules, stylistic preferences, or project-specific instructions. These rules are safely persisted to `~/.curecode/memory.json` and automatically injected into the agent's System Prompt on every boot.
+- **Reactive File Watcher (fsnotify)**: Built an asynchronous file watcher in `internal/watcher/watcher.go`. The agent is now aware of external file changes (e.g., when you edit a file in VSCode). If a file currently in the agent's immediate memory (`FileCache`) is modified externally, the agent will instantly and thread-safely update its internal context without needing a prompt.
+- **Interactive Review Flow (`/grill-me`)**: A brand new interview mode for gathering system requirements. By running `/grill-me`, you force the agent into a state where it acts as a systems architect—asking you 1-3 clarifying and multiple-choice questions iteratively to nail down requirements before writing any code.
+- **Advanced Sandbox Hardening**: Massively tightened the `workspace-write` and `workspace-write-no-network` shell profiles in `internal/tools/shell.go`. The sandbox now enforces strict CWD (Current Working Directory) locks, actively preventing path traversal outside the workspace, and acts as a jail by hard-blocking catastrophic system commands (e.g., `rm -rf /`, formatting disks, etc.).
+- **Model Context Protocol (MCP) Integration**: Full lifecycle support for MCP servers. Added `/mcp` command (`add`, `list`, `remove`) directly in the REPL. External tools provided by MCP servers are automatically synced, loaded into the agent's context, and properly cleaned up when the CLI exits via `Ctrl+C` or `/exit`.
+
+### Changed
+- **Centralized Configuration Path**: Migrated all configuration paths (including sessions, memory, and config files) from Windows `AppData` to a Unix-standard `~/.curecode` directory. This unifies the developer experience across all operating systems.
+- **Session Auto-Save**: Typing `/exit` or hitting `Ctrl+D` now triggers an automatic session backup, ensuring you never lose your progress on sudden exits.
+- **UI & Boot Sequence Polish**: Suppressed the extremely noisy list of tools printed on application startup, replacing it with a clean summary count (e.g., `Tools: 15 loaded`). This creates a much faster and tidier terminal entry point.
+
 ## [1.0.3] - 2026-05-05
 **Massive Architectural Refactor & OpenRouter Support**
 
-### 🚀 Features
+###  Features
 - **OpenRouter Integration**: Fully supported via the generic provider engine.
 - **Smart Model Fallback**: Automatically switches to the next available AI provider if your default key is missing or model is unavailable.
 - **Intelligent Ollama Validator**: Automatically scans local models and warns if selected models lack tool-calling capabilities.

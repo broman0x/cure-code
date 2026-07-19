@@ -1029,6 +1029,17 @@ func CreateFCProvider(pType, modelName string) (agent.FunctionCallingProvider, e
 		}
 		return NewGenericOpenAIFCProvider(key, modelName, "https://openrouter.ai/api/v1", "OpenRouter"), nil
 
+	case "custom":
+		url := os.Getenv("CUSTOM_API_URL")
+		if url == "" {
+			return nil, fmt.Errorf("CUSTOM_API_URL not found in environment")
+		}
+		key := os.Getenv("CUSTOM_API_KEY") // Optional
+		if modelName == "" {
+			modelName = "custom-model"
+		}
+		return NewGenericOpenAIFCProvider(key, modelName, url, "Custom"), nil
+
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", pType)
 	}

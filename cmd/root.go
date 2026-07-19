@@ -2,8 +2,12 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +23,9 @@ import (
 	"github.com/broman0x/cure-code/internal/agent"
 	"github.com/broman0x/cure-code/internal/ai"
 	"github.com/broman0x/cure-code/internal/config"
+	"github.com/broman0x/cure-code/internal/mcp"
+	"github.com/broman0x/cure-code/internal/memory"
+	"github.com/broman0x/cure-code/internal/tools"
 	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/broman0x/cure-code/internal/version"
 )
@@ -148,11 +155,20 @@ func createAgent() (*agent.Agent, error) {
 		{"xai", "grok-2-1212", "XAI_API_KEY"},
 		{"deepseek", "deepseek-coder", "DEEPSEEK_API_KEY"},
 		{"openrouter", "anthropic/claude-3.5-sonnet", "OPENROUTER_API_KEY"},
+		{"custom", "custom", "CUSTOM_API_URL"},
 	}
 
 	for _, p := range apiKeyProviders {
 		if os.Getenv(p.envKey) != "" {
-			provider, err = ai.CreateFCProvider(p.name, p.model)
+			modelToUse := p.model
+			if p.name == "custom" {
+				if envModel := os.Getenv("CUSTOM_MODEL"); envModel != "" {
+					modelToUse = envModel
+				} else if cfg.LastProvider == "custom" {
+					modelToUse = cfg.LastModel
+				}
+			}
+			provider, err = ai.CreateFCProvider(p.name, modelToUse)
 			if err == nil {
 				color.Green("  [OK] Using %s (via %s)\n", p.name, p.envKey)
 				a := agent.NewAgent(provider, mustGetwd())
@@ -231,6 +247,33 @@ func validateAllowCommandPrefix(prefix string) error {
 	return nil
 }
 
+func setupMCP(ctx context.Context, a *agent.Agent, cfg *config.Config) {
+	if len(cfg.MCPServers) == 0 {
+		return
+	}
+	
+	color.Cyan("  [MCP] Initializing servers...")
+	for name, srvCfg := range cfg.MCPServers {
+		if srvCfg.Command == "" {
+			continue
+		}
+		
+		client, err := mcp.NewClient(ctx, srvCfg.Command, srvCfg.Args...)
+		if err != nil {
+			color.Red("  [X] Failed to start MCP server '%s': %v", name, err)
+			continue
+		}
+		
+		a.CleanupFuncs = append(a.CleanupFuncs, client.Close)
+		
+		for _, t := range client.Tools {
+			mcpTool := tools.NewMCPTool(client, name, t)
+			a.Tools.RegisterDeferred(mcpTool)
+		}
+		color.Green("  [OK] MCP server '%s' initialized with %d tools", name, len(client.Tools))
+	}
+}
+
 func cleanupTerminal() {
 	if runtime.GOOS != "windows" {
 		cmd := exec.Command("stty", "sane")
@@ -261,6 +304,9 @@ func runREPL(sessionID string) error {
 		}
 		return runProviderSetup(err)
 	}
+	
+	setupMCP(context.Background(), ag, cfg)
+	defer ag.Close()
 
 	if sessionID != "" {
 		configDir := filepath.Dir(config.GetConfigPath())
@@ -286,7 +332,7 @@ func runREPL(sessionID string) error {
 	}
 
 	fmt.Printf("  %s %s\n", cActive("Provider:"), ag.Provider.Name())
-	fmt.Printf("  %s %s\n", cActive("Tools:"), strings.Join(toolNames, ", "))
+	fmt.Printf("  %s %d loaded\n", cActive("Tools:"), len(toolDefs))
 	fmt.Printf("  %s %s | sandbox=%s\n", cActive("Mode:"), ag.PermissionMode, ag.ShellSandboxProfile)
 	if len(ag.AllowedCommandPrefix) > 0 {
 		fmt.Printf("  %s %s\n", cActive("Allowed command prefixes:"), strings.Join(ag.AllowedCommandPrefix, " | "))
@@ -308,6 +354,9 @@ func runREPL(sessionID string) error {
 				{Text: "/mode", Description: "Show/set permission mode"},
 				{Text: "/sandbox", Description: "Show/set shell sandbox profile"},
 				{Text: "/allowcmd", Description: "Add allowed shell prefix"},
+				{Text: "/mcp", Description: "Manage MCP servers"},
+				{Text: "/learn", Description: "Teach the agent a new persistent rule"},
+				{Text: "/grill-me", Description: "Activate interactive interview mode"},
 				{Text: "/usage", Description: "Show token usage stats"},
 				{Text: "/version", Description: "Show version info"},
 				{Text: "/doctor", Description: "Run environment diagnostics"},
@@ -352,6 +401,8 @@ func runREPL(sessionID string) error {
 
 		if strings.HasPrefix(input, "/") {
 			if handleCommand(input, ag) {
+				ag.ProcMgr.Cleanup()
+				ag.Close()
 				cleanupTerminal()
 				os.Exit(0)
 			}
@@ -393,7 +444,10 @@ func runREPL(sessionID string) error {
 		if err != nil {
 			color.Red("  [!] Failed to auto-save session: %v", err)
 		} else {
-			color.HiBlack("  Session auto-saved as %s", id)
+			fmt.Println()
+			color.HiBlack("  Session auto-saved. To resume, run:")
+			color.HiWhite("  curecode --resume %s", id)
+			fmt.Println()
 		}
 	}
 	ag.ProcMgr.Cleanup()
@@ -409,6 +463,14 @@ func handleCommand(input string, ag *agent.Agent) bool {
 
 	switch cmd {
 	case "/exit", "/quit", "/q":
+		if len(ag.History) > 0 {
+			configDir := filepath.Dir(config.GetConfigPath())
+			if id, err := agent.SaveSession(ag.History, ag.Tasks, ag.WorkDir, configDir); err == nil {
+				fmt.Println()
+				color.HiBlack("  Session auto-saved. To resume, run:")
+				color.HiWhite("  curecode --resume %s", id)
+			}
+		}
 		fmt.Println()
 		color.HiBlack("  Goodbye!")
 		fmt.Println()
@@ -429,6 +491,21 @@ func handleCommand(input string, ag *agent.Agent) bool {
 
 	case "/sandbox":
 		handleSandboxProfile(parts, ag)
+
+	case "/mcp":
+		handleMCP(parts, ag)
+
+	case "/learn":
+		handleLearn(input, parts)
+
+	case "/grill-me":
+		ag.InterviewMode = !ag.InterviewMode
+		if ag.InterviewMode {
+			color.HiCyan("  [Mode] Interview mode activated. The agent will grill you with questions to clarify your requirements.")
+		} else {
+			color.HiCyan("  [Mode] Interview mode deactivated.")
+		}
+		fmt.Println()
 
 	case "/allowcmd":
 		handleAllowCommandPrefix(input, ag)
@@ -600,11 +677,142 @@ func handleAllowCommandPrefix(input string, ag *agent.Agent) {
 	color.Green("  [OK] Added allowed command prefix: %s\n\n", prefix)
 }
 
+func handleMCP(parts []string, ag *agent.Agent) {
+	cfg := config.Load()
+
+	if len(parts) < 2 {
+		color.HiYellow("  Usage: /mcp [list | add | remove]")
+		color.HiBlack("    /mcp list")
+		color.HiBlack("    /mcp add <name> <command> [args...]")
+		color.HiBlack("    /mcp remove <name>")
+		fmt.Println()
+		return
+	}
+
+	action := strings.ToLower(parts[1])
+	switch action {
+	case "list":
+		if len(cfg.MCPServers) == 0 {
+			color.Yellow("  No MCP servers configured.")
+		} else {
+			color.Cyan("  Configured MCP Servers:")
+			for name, srv := range cfg.MCPServers {
+				args := strings.Join(srv.Args, " ")
+				color.HiWhite("    - %s: %s %s", name, srv.Command, args)
+			}
+		}
+		fmt.Println()
+
+	case "add":
+		if len(parts) < 4 {
+			color.Red("  Error: Missing arguments for /mcp add. Usage: /mcp add <name> <command> [args...]")
+			return
+		}
+		name := parts[2]
+		cmd := parts[3]
+		args := parts[4:]
+
+		if cfg.MCPServers == nil {
+			cfg.MCPServers = make(map[string]config.MCPServerConfig)
+		}
+
+		cfg.MCPServers[name] = config.MCPServerConfig{
+			Command: cmd,
+			Args:    args,
+		}
+
+		if err := config.Save(cfg); err != nil {
+			color.Red("  [X] Failed to save config: %v", err)
+			return
+		}
+
+		color.Green("  [OK] Added MCP server '%s'. Initializing...", name)
+		
+		// Initialize it on the fly
+		ctx := context.Background()
+		client, err := mcp.NewClient(ctx, cmd, args...)
+		if err != nil {
+			color.Red("  [X] Failed to start MCP server '%s': %v", name, err)
+			return
+		}
+
+		ag.CleanupFuncs = append(ag.CleanupFuncs, client.Close)
+
+		for _, t := range client.Tools {
+			mcpTool := tools.NewMCPTool(client, name, t)
+			ag.Tools.RegisterDeferred(mcpTool)
+		}
+		color.Green("  [OK] MCP server '%s' initialized with %d tools", name, len(client.Tools))
+		fmt.Println()
+
+	case "remove":
+		if len(parts) < 3 {
+			color.Red("  Error: Missing name for /mcp remove. Usage: /mcp remove <name>")
+			return
+		}
+		name := parts[2]
+
+		if cfg.MCPServers == nil || cfg.MCPServers[name].Command == "" {
+			color.Yellow("  MCP server '%s' not found.", name)
+			return
+		}
+
+		delete(cfg.MCPServers, name)
+		if err := config.Save(cfg); err != nil {
+			color.Red("  [X] Failed to save config: %v", err)
+			return
+		}
+
+		color.Green("  [OK] Removed MCP server '%s'. Note: Please restart CuRe Code to completely remove its tools.", name)
+		fmt.Println()
+
+	default:
+		color.Red("  Unknown action: %s. Valid actions: list, add, remove", action)
+		fmt.Println()
+	}
+}
+
+func handleLearn(input string, parts []string) {
+	if len(parts) < 2 {
+		store, _ := memory.Load()
+		if len(store.Rules) == 0 {
+			color.Yellow("  No rules learned yet.")
+		} else {
+			color.Cyan("  Learned Rules:")
+			for i, rule := range store.Rules {
+				color.HiWhite("    %d. %s", i+1, rule)
+			}
+			color.HiBlack("  (Use /learn clear to remove all rules)")
+		}
+		fmt.Println()
+		return
+	}
+	
+	if parts[1] == "clear" {
+		memory.ClearRules()
+		color.Green("  [OK] Cleared all learned rules.")
+		fmt.Println()
+		return
+	}
+
+	rule := strings.TrimSpace(input[len(parts[0]):])
+	if err := memory.AddRule(rule); err != nil {
+		color.Red("  [X] Failed to save rule: %v", err)
+	} else {
+		color.Green("  [OK] Learned new rule: %s", rule)
+	}
+	fmt.Println()
+}
+
 func runOneShot(prompt string, sessionID string) error {
 	ag, err := createAgent()
 	if err != nil {
 		return err
 	}
+	
+	cfg := config.Load()
+	setupMCP(context.Background(), ag, cfg)
+	defer ag.Close()
 	
 	if sessionID != "" {
 		configDir := filepath.Dir(config.GetConfigPath())
@@ -659,6 +867,9 @@ func showHelp() {
 	fmt.Printf("  %s  %s\n", cCmd("/model   "), cDesc("Switch AI provider/model"))
 	fmt.Printf("  %s  %s\n", cCmd("/mode    "), cDesc("Show/set permission mode"))
 	fmt.Printf("  %s  %s\n", cCmd("/sandbox "), cDesc("Show/set shell sandbox profile"))
+	fmt.Printf("  %s  %s\n", cCmd("/mcp     "), cDesc("Manage MCP servers (list/add/remove)"))
+	fmt.Printf("  %s  %s\n", cCmd("/learn   "), cDesc("Teach the agent a new persistent rule"))
+	fmt.Printf("  %s  %s\n", cCmd("/grill-me"), cDesc("Activate interactive interview mode"))
 	fmt.Printf("  %s  %s\n", cCmd("/allowcmd"), cDesc("Add allowed shell command prefix"))
 	fmt.Printf("  %s  %s\n", cCmd("/usage   "), cDesc("Show session token usage"))
 	fmt.Printf("  %s  %s\n", cCmd("/save    "), cDesc("Save current session"))
@@ -684,6 +895,7 @@ func handleModelSwitch(ag *agent.Agent) {
 	fmt.Println("  10. Together Llama 3.1 70B")
 	fmt.Println("  11. Mistral Large")
 	fmt.Println("  12. Ollama (Local)")
+	fmt.Println("  13. Custom Provider (OpenAI Compatible)")
 	fmt.Println("  0. Cancel")
 	fmt.Print("\n  Select > ")
 
@@ -726,6 +938,54 @@ func handleModelSwitch(ag *agent.Agent) {
 			ag.ClearHistory()
 			color.Green("  [OK] Switched to %s\n\n", p.Name())
 			config.SaveLastModel("ollama", model)
+		}
+		return
+	}
+
+	if choice == "13" {
+		fmt.Print("  API Base URL (e.g., http://localhost:11434/v1): ")
+		if scanner.Scan() {
+			baseURL := strings.TrimSpace(scanner.Text())
+			if baseURL == "" {
+				return
+			}
+			fmt.Print("  API Key (leave blank if none): ")
+			var key string
+			if scanner.Scan() {
+				key = strings.TrimSpace(scanner.Text())
+			}
+			fmt.Print("  Model Name: ")
+			var model string
+			if scanner.Scan() {
+				model = strings.TrimSpace(scanner.Text())
+			}
+			if model == "" {
+				model = "default"
+			}
+			
+			fmt.Print("  Testing connection... ")
+			if err := testCustomConnection(baseURL, key, model); err != nil {
+				color.Red("Failed: %v\n", err)
+				return
+			}
+			color.Green("OK!\n")
+			
+			config.SaveAPIKey("CUSTOM_API_URL", baseURL)
+			if key != "" {
+				config.SaveAPIKey("CUSTOM_API_KEY", key)
+			}
+			config.SaveAPIKey("CUSTOM_MODEL", model)
+			godotenv.Load(config.GetEnvPath())
+			
+			p, err := ai.CreateFCProvider("custom", model)
+			if err != nil {
+				color.Red("  Error: %v", err)
+				return
+			}
+			ag.Provider = p
+			ag.ClearHistory()
+			color.Green("  [OK] Switched to %s\n\n", p.Name())
+			config.SaveLastModel("custom", model)
 		}
 		return
 	}
@@ -781,6 +1041,62 @@ func getInteractiveScanner() (*bufio.Scanner, func()) {
 	return bufio.NewScanner(os.Stdin), func() {}
 }
 
+func testCustomConnection(baseURL, apiKey, modelName string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	
+	// First, try /models
+	modelsURL := strings.TrimSuffix(baseURL, "/") + "/models"
+	req, _ := http.NewRequest("GET", modelsURL, nil)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := client.Do(req)
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+	}
+
+	// Fallback to /chat/completions
+	chatURL := strings.TrimSuffix(baseURL, "/") + "/chat/completions"
+	reqBody := map[string]interface{}{
+		"model": modelName,
+		"messages": []map[string]interface{}{
+			{"role": "user", "content": "hi"},
+		},
+		"max_tokens": 5,
+	}
+	payload, _ := json.Marshal(reqBody)
+	
+	req, _ = http.NewRequest("POST", chatURL, bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	
+	resp, err = client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	
+	// For 4xx errors, try to parse JSON error to see if it's a valid API rejecting us
+	body, _ := io.ReadAll(resp.Body)
+	var errResp struct {
+		Error interface{} `json:"error"`
+	}
+	if json.Unmarshal(body, &errResp) == nil && errResp.Error != nil {
+		return fmt.Errorf("API reached but rejected request (status %d): %s", resp.StatusCode, string(body))
+	}
+	
+	return fmt.Errorf("server returned status: %d", resp.StatusCode)
+}
+
 func runQuickSetup() error {
 	fmt.Print("\033[H\033[2J")
 
@@ -799,6 +1115,7 @@ func runQuickSetup() error {
 	fmt.Println("  5. xAI Grok")
 	fmt.Println("  6. DeepSeek")
 	fmt.Println("  7. Ollama (local, no API key)")
+	fmt.Println("  8. Custom Provider (OpenAI Compatible)")
 	fmt.Print("\n  Select > ")
 
 	if !scanner.Scan() {
@@ -876,6 +1193,41 @@ func runQuickSetup() error {
 	case "7":
 		color.Yellow("  Make sure Ollama is running (https://ollama.com)")
 		config.SaveLastModel("ollama", "llama3")
+	case "8":
+		fmt.Print("\n  API Base URL (e.g., http://localhost:11434/v1): ")
+		if scanner.Scan() {
+			baseURL := strings.TrimSpace(scanner.Text())
+			if baseURL != "" {
+				fmt.Print("  API Key (leave blank if none): ")
+				var key string
+				if scanner.Scan() {
+					key = strings.TrimSpace(scanner.Text())
+				}
+				fmt.Print("  Model Name: ")
+				var model string
+				if scanner.Scan() {
+					model = strings.TrimSpace(scanner.Text())
+				}
+				if model == "" {
+					model = "default"
+				}
+				
+				fmt.Print("  Testing connection... ")
+				if err := testCustomConnection(baseURL, key, model); err != nil {
+					color.Red("Failed: %v\n", err)
+					return fmt.Errorf("connection failed")
+				}
+				color.Green("OK!\n")
+				
+				config.SaveAPIKey("CUSTOM_API_URL", baseURL)
+				if key != "" {
+					config.SaveAPIKey("CUSTOM_API_KEY", key)
+				}
+				config.SaveAPIKey("CUSTOM_MODEL", model)
+				godotenv.Load(config.GetEnvPath())
+				config.SaveLastModel("custom", model)
+			}
+		}
 	}
 
 	config.SaveFirstRun(false)

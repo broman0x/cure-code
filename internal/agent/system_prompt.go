@@ -6,10 +6,17 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/broman0x/cure-code/internal/memory"
 )
 
-func BuildSystemPrompt(wsCtx *WorkspaceContext, skills []Skill, fileCache map[string]string, recentSymbols []string, suggestedFiles []string) string {
+func BuildSystemPrompt(wsCtx *WorkspaceContext, skills []Skill, fileCache map[string]string, recentSymbols []string, suggestedFiles []string, interviewMode bool) string {
 	now := time.Now()
+
+	interviewText := ""
+	if interviewMode {
+		interviewText = "\n## INTERVIEW MODE ACTIVE\nThe user has requested to be 'grilled'. You MUST act as a systems architect interviewing the user. Ask them clarifying questions, design trade-offs, and questions to clearly define the requirements of their upcoming task. Only ask 1-3 questions at a time. Do not write implementation code until you have enough context.\n"
+	}
 
 	projectContext := ""
 	for _, name := range []string{"CURECODE.md", "CODEBASE.md", "CONTEXT.md"} {
@@ -17,6 +24,15 @@ func BuildSystemPrompt(wsCtx *WorkspaceContext, skills []Skill, fileCache map[st
 		if content, err := os.ReadFile(path); err == nil {
 			projectContext = fmt.Sprintf("\n## PROJECT-SPECIFIC INSTRUCTIONS (%s)\n%s\n", name, string(content))
 			break
+		}
+	}
+
+	learnedRules := ""
+	if store, err := memory.Load(); err == nil && len(store.Rules) > 0 {
+		learnedRules = "\n## LEARNED RULES (PERSISTENT MEMORY)\n"
+		learnedRules += "The user has explicitly taught you the following rules. You MUST follow them at all times:\n"
+		for i, rule := range store.Rules {
+			learnedRules += fmt.Sprintf("%d. %s\n", i+1, rule)
 		}
 	}
 
@@ -43,6 +59,8 @@ You have tools to read, write, edit files, run commands, search code, and ask qu
 
 ## ENVIRONMENT
 - Current time: %s
+%s
+%s
 %s
 %s
 %s
@@ -104,7 +122,7 @@ While in Plan Mode, write_file and edit_file tools are DISBLED.
 - Use the tools — don't describe what should be done, actually do it.
 - Respond in the same language the user uses.
 - For code output, use proper markdown code blocks with language tags.
-%s`, now.Format("2006-01-02 15:04"), wsCtx.EnrichedSummary(), skillsText, projectContext, workingSet, formatIntelligence(recentSymbols, suggestedFiles))
+%s`, now.Format("2006-01-02 15:04"), wsCtx.EnrichedSummary(), interviewText, learnedRules, skillsText, projectContext, workingSet, formatIntelligence(recentSymbols, suggestedFiles))
 }
 
 func formatIntelligence(recentSymbols []string, suggestedFiles []string) string {

@@ -9,12 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/broman0x/cure-code/internal/config"
 	"github.com/broman0x/cure-code/internal/tools"
 	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/broman0x/cure-code/internal/version"
+	"github.com/broman0x/cure-code/internal/watcher"
 	"github.com/fatih/color"
 )
 
@@ -63,8 +65,13 @@ type Agent struct {
 	RecentToolCalls []string
 	Skills          *SkillRegistry
 	Planning        bool
+	InterviewMode   bool
+	
+	FileCacheMu     sync.RWMutex
 	FileCache       map[string]string
 	FileCacheOrder  []string
+
+	Watcher         *watcher.Watcher
 
 	CompactThreshold int
 	RecentSymbols    []string
@@ -78,6 +85,8 @@ type Agent struct {
 	ModifiedFiles        map[string]bool
 	ValidationRan        bool
 	VerificationPrompted bool
+
+	CleanupFuncs []func() error
 }
 
 // [EN] NewAgent initializes a new AI coding agent with the given provider and working directory.
@@ -89,7 +98,6 @@ func NewAgent(provider FunctionCallingProvider, workDir string) *Agent {
 	skills.LoadBuiltin()
 	skills.LoadFromDir(workDir)
 
-	fileCache := make(map[string]string)
 	a := &Agent{
 		Provider:     provider,
 		Tools:        registry,
@@ -118,8 +126,32 @@ func NewAgent(provider FunctionCallingProvider, workDir string) *Agent {
 		ProcessPromptFunc: a.SpawnSubAgent,
 	})
 
-	a.SystemPrompt = BuildSystemPrompt(wsCtx, skills.List(), fileCache, nil, nil)
+	w, err := watcher.NewWatcher(workDir, func(path string, content string) {
+		a.FileCacheMu.Lock()
+		defer a.FileCacheMu.Unlock()
+		if _, exists := a.FileCache[path]; exists {
+			a.FileCache[path] = content
+			color.HiCyan("\n  [Watcher] Detected external changes to %s. Context updated.", path)
+		}
+	})
+	if err == nil {
+		a.Watcher = w
+		a.Watcher.Start()
+		a.CleanupFuncs = append(a.CleanupFuncs, a.Watcher.Close)
+	}
+
+	a.SystemPrompt = BuildSystemPrompt(wsCtx, skills.List(), a.getFileCacheCopy(), nil, nil, a.InterviewMode)
 	return a
+}
+
+func (a *Agent) getFileCacheCopy() map[string]string {
+	a.FileCacheMu.RLock()
+	defer a.FileCacheMu.RUnlock()
+	copy := make(map[string]string)
+	for k, v := range a.FileCache {
+		copy[k] = v
+	}
+	return copy
 }
 
 // [EN] ProcessPrompt takes a user input, resolves mentions, and starts the agentic loop.
@@ -141,7 +173,7 @@ func (a *Agent) ProcessPrompt(ctx context.Context, userPrompt string) error {
 
 	wsCtx := DetectWorkspace(a.WorkDir)
 	suggested := a.Intel.SuggestContext(userPrompt, a.History)
-	a.SystemPrompt = BuildSystemPrompt(wsCtx, a.Skills.List(), a.FileCache, a.RecentSymbols, suggested)
+	a.SystemPrompt = BuildSystemPrompt(wsCtx, a.Skills.List(), a.getFileCacheCopy(), a.RecentSymbols, suggested, a.InterviewMode)
 	a.SystemPrompt += "\n\n## RUNTIME SAFETY POLICY\n" + a.runtimePolicyPrompt()
 
 	// [EN] Check and compact history if needed
@@ -660,6 +692,16 @@ func (a *Agent) shouldAutoAllow(tc ToolCall) bool {
 	return false
 }
 
+func (a *Agent) Close() error {
+	var lastErr error
+	for _, cleanup := range a.CleanupFuncs {
+		if err := cleanup(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
 func commandMatchesAllowedPrefix(command string, prefixes []string) bool {
 	command = strings.TrimSpace(command)
 	for _, p := range prefixes {
@@ -765,6 +807,9 @@ func looksLikeValidationCommand(command string) bool {
 }
 
 func (a *Agent) updateFileCache(path, content string) {
+	a.FileCacheMu.Lock()
+	defer a.FileCacheMu.Unlock()
+
 	// [EN] Keep only the last 3 files in cache to save tokens
 	// [ID] Hanya simpan 3 file terakhir di cache untuk menghemat token
 	maxCache := 3

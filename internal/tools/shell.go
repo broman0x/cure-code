@@ -297,12 +297,18 @@ func enforceSandboxProfile(command string, profile string, workDir string) strin
 			return "Sandbox(read-only) blocked this command because it appears to modify files."
 		}
 	case SandboxWorkspaceWrite:
+		if isDangerousCommand(command) {
+			return "Sandbox(workspace-write) blocked a dangerous system-level command."
+		}
 		if p := firstDangerousAbsolutePath(command, workDir); p != "" {
 			return fmt.Sprintf("Sandbox(workspace-write) blocked write-like path outside workspace: %s", p)
 		}
 	case SandboxWorkspaceWriteNoNet:
 		if looksLikeNetworkCommand(command) {
 			return "Sandbox(workspace-write-no-network) blocked this command because it appears to use network access."
+		}
+		if isDangerousCommand(command) {
+			return "Sandbox(workspace-write-no-network) blocked a dangerous system-level command."
 		}
 		if p := firstDangerousAbsolutePath(command, workDir); p != "" {
 			return fmt.Sprintf("Sandbox(workspace-write-no-network) blocked write-like path outside workspace: %s", p)
@@ -311,6 +317,20 @@ func enforceSandboxProfile(command string, profile string, workDir string) strin
 		return fmt.Sprintf("Unknown sandbox profile: %s", profile)
 	}
 	return ""
+}
+
+func isDangerousCommand(command string) bool {
+	c := " " + strings.ToLower(command) + " "
+	dangerous := []string{
+		" rm -rf / ", " rm -rf /* ", " del /f /s /q c:\\ ", " format c: ",
+		" mkfs.", " /dev/sda", " dd if=",
+	}
+	for _, s := range dangerous {
+		if strings.Contains(c, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func isLikelyWriteCommand(command string) bool {
