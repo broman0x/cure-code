@@ -399,9 +399,9 @@ func runREPL(sessionID string) error {
 		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
 		cleanupTerminal()
 
-		// [EN] If the input is very long (e.g., a paste), collapse it in the terminal output
-		// [ID] Jika input sangat panjang (misal hasil paste), lipat tampilannya di terminal
-		if len(input) > 200 || strings.Contains(input, "\n") {
+		// [EN] If the input has multiple lines (e.g., a paste), collapse it in the terminal output
+		// [ID] Jika input memiliki banyak baris (misal hasil paste), lipat tampilannya di terminal
+		if strings.Contains(input, "\n") {
 			// Move cursor up by the number of newlines in the input + 1 (for the prompt line itself)
 			lines := strings.Count(input, "\n") + 1
 			
