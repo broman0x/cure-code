@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type PromptResult struct {
@@ -169,11 +170,50 @@ func (m promptModel) View() string {
 	if len(m.suggestions) > 0 {
 		var sb strings.Builder
 		sb.WriteString("\n")
-		for i, s := range m.suggestions {
+
+		maxTextLen := 0
+		maxDescLen := 0
+		for _, s := range m.suggestions {
+			if len(s.Text) > maxTextLen {
+				maxTextLen = len(s.Text)
+			}
+			if len(s.Description) > maxDescLen {
+				maxDescLen = len(s.Description)
+			}
+		}
+
+		suggestionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("236")).Padding(0, 1).Width(maxTextLen + 2)
+		suggestionDescStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Background(lipgloss.Color("234")).Padding(0, 1).Width(maxDescLen + 2)
+		selectedSuggestionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("232")).Background(lipgloss.Color("43")).Padding(0, 1).Width(maxTextLen + 2)
+		selectedDescStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Background(lipgloss.Color("236")).Padding(0, 1).Width(maxDescLen + 2)
+
+		displayCount := 8
+		startIdx := 0
+		if m.suggestionIdx >= displayCount {
+			startIdx = m.suggestionIdx - displayCount + 1
+		}
+		endIdx := startIdx + displayCount
+		if endIdx > len(m.suggestions) {
+			endIdx = len(m.suggestions)
+		}
+
+		for i := startIdx; i < endIdx; i++ {
+			s := m.suggestions[i]
+			var tStyle, dStyle lipgloss.Style
 			if i == m.suggestionIdx {
-				sb.WriteString(fmt.Sprintf("\033[36m> %s\033[0m \033[90m%s\033[0m\n", s.Text, s.Description))
+				tStyle = selectedSuggestionStyle
+				dStyle = selectedDescStyle
 			} else {
-				sb.WriteString(fmt.Sprintf("  %s \033[90m%s\033[0m\n", s.Text, s.Description))
+				tStyle = suggestionStyle
+				dStyle = suggestionDescStyle
+			}
+
+			// Do not render description column if there are no descriptions at all
+			if maxDescLen == 0 {
+				sb.WriteString("  " + tStyle.Render(s.Text) + "\n")
+			} else {
+				row := lipgloss.JoinHorizontal(lipgloss.Left, tStyle.Render(s.Text), dStyle.Render(s.Description))
+				sb.WriteString("  " + row + "\n")
 			}
 		}
 		view += sb.String()
