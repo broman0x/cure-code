@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -73,8 +74,21 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m promptModel) View() string {
-	if m.result.Canceled || m.result.Text != "" {
+	if m.result.Canceled {
 		return ""
+	}
+	if m.result.Text != "" {
+		val := m.result.Text
+		if len(val) > 250 || strings.Contains(val, "\n") {
+			preview := val
+			if len(preview) > 50 {
+				preview = preview[:47] + "..."
+			}
+			preview = strings.ReplaceAll(preview, "\n", " ")
+			// Dim text for the char count
+			return fmt.Sprintf("  \033[36mcure >\033[0m %s \033[90m[#%d chars]\033[0m\n", preview, len(val))
+		}
+		return fmt.Sprintf("  \033[36mcure >\033[0m %s\n", val)
 	}
 	return m.textarea.View()
 }

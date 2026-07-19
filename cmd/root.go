@@ -350,23 +350,8 @@ func runREPL(sessionID string) error {
 		// [ID] Kembalikan terminal ke mode normal sementara agar input tool dan SIGINT berfungsi
 		cleanupTerminal()
 		
-		if len(input) > 250 || strings.Contains(input, "\n") {
-			preview := input
-			if len(preview) > 50 {
-				preview = preview[:47] + "..."
-			}
-			preview = strings.ReplaceAll(preview, "\n", " ")
-			
-			cPrompt := color.New(color.FgCyan).SprintFunc()
-			cDim := color.New(color.FgHiBlack).SprintFunc()
-			fmt.Printf("  %s %s %s\n", cPrompt("cure >"), preview, cDim(fmt.Sprintf("[#%d chars]", len(input))))
-		} else {
-            // print the normal prompt output to maintain history
-            cPrompt := color.New(color.FgCyan).SprintFunc()
-            fmt.Printf("  %s %s\n", cPrompt("cure >"), input)
-        }
 
-		fmt.Println()
+		// Output is rendered by Bubbletea natively before exit
 
 		if strings.HasPrefix(input, "/") {
 			if handleCommand(input, ag) {
