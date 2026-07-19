@@ -30,7 +30,7 @@ type promptModel struct {
 	scrolled      bool
 	completer     func(string) []Suggestion
 	pendingPastes map[string]string
-	burstBuffer   strings.Builder
+	burstBuffer   *strings.Builder
 }
 
 type flushBurstMsg struct{}
@@ -58,6 +58,7 @@ func initialPromptModel(completer func(string) []Suggestion) promptModel {
 		err:           nil,
 		completer:     completer,
 		pendingPastes: make(map[string]string),
+		burstBuffer:   &strings.Builder{},
 	}
 }
 
