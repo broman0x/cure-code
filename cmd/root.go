@@ -16,9 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/term"
-
-	"github.com/c-bata/go-prompt"
+	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -29,7 +27,6 @@ import (
 	"github.com/broman0x/cure-code/internal/mcp"
 	"github.com/broman0x/cure-code/internal/memory"
 	"github.com/broman0x/cure-code/internal/tools"
-	"github.com/broman0x/cure-code/internal/ui"
 	"github.com/broman0x/cure-code/internal/version"
 )
 
@@ -343,55 +340,6 @@ func runREPL(sessionID string) error {
 	fmt.Printf("  %s\n", cSubtle("Type your prompt, @ to tag files, or / for commands"))
 	fmt.Println()
 
-	completer := func(d prompt.Document) []prompt.Suggest {
-		word := d.GetWordBeforeCursor()
-		if strings.HasPrefix(word, "/") {
-			return []prompt.Suggest{
-				{Text: "/help", Description: "Show help message"},
-				{Text: "/exit", Description: "Exit the agent"},
-				{Text: "/clear", Description: "Clear the screen"},
-				{Text: "/compact", Description: "Clear conversation history"},
-				{Text: "/save", Description: "Save the current session"},
-				{Text: "/resume", Description: "Resume a previous session"},
-				{Text: "/model", Description: "Switch AI model"},
-				{Text: "/mode", Description: "Show/set permission mode"},
-				{Text: "/sandbox", Description: "Show/set shell sandbox profile"},
-				{Text: "/allowcmd", Description: "Add allowed shell prefix"},
-				{Text: "/mcp", Description: "Manage MCP servers"},
-				{Text: "/learn", Description: "Teach the agent a new persistent rule"},
-				{Text: "/grill-me", Description: "Activate interactive interview mode"},
-				{Text: "/usage", Description: "Show token usage stats"},
-				{Text: "/version", Description: "Show version info"},
-				{Text: "/doctor", Description: "Run environment diagnostics"},
-			}
-		}
-		if strings.HasPrefix(word, "@") {
-			path := strings.TrimPrefix(word, "@")
-			dir := "."
-			if idx := strings.LastIndex(path, "/"); idx != -1 {
-				dir = path[:idx]
-			}
-			fullDir := filepath.Join(ag.WorkDir, dir)
-			entries, _ := os.ReadDir(fullDir)
-			var suggestions []prompt.Suggest
-			for _, entry := range entries {
-				name := entry.Name()
-				if entry.IsDir() {
-					name += "/"
-				}
-				p := filepath.Join(dir, name)
-				if dir == "." {
-					p = name
-				}
-				if strings.HasPrefix(p, path) {
-					suggestions = append(suggestions, prompt.Suggest{Text: "@" + p})
-				}
-			}
-			return suggestions
-		}
-		return nil
-	}
-
 	executor := func(input string) {
 		input = strings.TrimSpace(input)
 		if input == "" {
@@ -403,31 +351,6 @@ func runREPL(sessionID string) error {
 		cleanupTerminal()
 		
 		if len(input) > 250 || strings.Contains(input, "\n") {
-			// [EN] Get terminal width for accurate line counting
-			width, _, err := term.GetSize(int(os.Stdout.Fd()))
-			if err != nil || width <= 0 {
-				width = 100 // Safe fallback
-			}
-
-			lines := 1
-			currentLineLen := 9 // len("  cure > ")
-			for _, r := range input {
-				if r == '\n' {
-					lines++
-					currentLineLen = 0
-				} else {
-					currentLineLen++
-					if currentLineLen >= width {
-						lines++
-						currentLineLen = 0
-					}
-				}
-			}
-
-			// [EN] go-prompt outputs \r\n when Enter is pressed. We move UP 'lines' times to the start of the prompt.
-			// [ID] Pindah kursor ke atas sebanyak 'lines' baris dan bersihkan sisa teks panjang.
-			fmt.Printf("\033[%dF\033[J", lines)
-			
 			preview := input
 			if len(preview) > 50 {
 				preview = preview[:47] + "..."
@@ -437,7 +360,11 @@ func runREPL(sessionID string) error {
 			cPrompt := color.New(color.FgCyan).SprintFunc()
 			cDim := color.New(color.FgHiBlack).SprintFunc()
 			fmt.Printf("  %s %s %s\n", cPrompt("cure >"), preview, cDim(fmt.Sprintf("[#%d chars]", len(input))))
-		}
+		} else {
+            // print the normal prompt output to maintain history
+            cPrompt := color.New(color.FgCyan).SprintFunc()
+            fmt.Printf("  %s %s\n", cPrompt("cure >"), input)
+        }
 
 		fmt.Println()
 
@@ -477,20 +404,22 @@ func runREPL(sessionID string) error {
 		cancel()
 	}
 
-	p := prompt.New(
-		executor,
-		completer,
-		prompt.OptionPrefix("  cure > "),
-		prompt.OptionPrefixTextColor(prompt.Cyan),
-		prompt.OptionSuggestionBGColor(prompt.DarkGray),
-		prompt.OptionSelectedSuggestionBGColor(prompt.Cyan),
-		prompt.OptionSelectedSuggestionTextColor(prompt.Black),
-		prompt.OptionDescriptionBGColor(prompt.Black),
-		prompt.OptionMaxSuggestion(10),
-		prompt.OptionSuggestionTextColor(prompt.White),
-	)
-
-	p.Run()
+	// [EN] Main input loop using Bubbletea TUI instead of go-prompt
+	for {
+		res, err := ui.RunPrompt()
+		if err != nil {
+			color.Red("  [!] UI Error: %v\n", err)
+			break
+		}
+		if res.Canceled {
+			fmt.Println()
+			color.HiBlack("  Goodbye!")
+			fmt.Println()
+			break
+		}
+		
+		executor(res.Text)
+	}
 
 	if len(ag.History) > 0 {
 		configDir := filepath.Dir(config.GetConfigPath())
