@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,9 +15,10 @@ type PromptResult struct {
 }
 
 type promptModel struct {
-	textarea textarea.Model
-	err      error
-	result   PromptResult
+	textarea      textarea.Model
+	err           error
+	result        PromptResult
+	lastKeystroke time.Time
 }
 
 func initialPromptModel() promptModel {
@@ -46,17 +48,25 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		now := time.Now()
+		isBurst := false
+		if !m.lastKeystroke.IsZero() && now.Sub(m.lastKeystroke) < 25*time.Millisecond {
+			isBurst = true
+		}
+		m.lastKeystroke = now
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			m.result.Canceled = true
 			return m, tea.Quit
 		case tea.KeyEnter:
-			if msg.Alt {
+			if msg.Alt || isBurst {
 				m.textarea.InsertString("\n")
 				return m, nil
 			}
 			val := strings.TrimSpace(m.textarea.Value())
 			if val == "" {
+				// Prevent empty submits from eating leading newlines in pastes
 				return m, nil
 			}
 			m.result.Text = val
