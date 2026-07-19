@@ -29,6 +29,7 @@ type promptModel struct {
 	suggestionIdx int
 	scrolled      bool
 	completer     func(string) []Suggestion
+	pendingPastes map[string]string
 }
 
 func initialPromptModel(completer func(string) []Suggestion) promptModel {
@@ -44,9 +45,10 @@ func initialPromptModel(completer func(string) []Suggestion) promptModel {
 	ti.KeyMap.InsertNewline.SetEnabled(true)
 
 	return promptModel{
-		textarea:  ti,
-		err:       nil,
-		completer: completer,
+		textarea:      ti,
+		err:           nil,
+		completer:     completer,
+		pendingPastes: make(map[string]string),
 	}
 }
 
@@ -60,6 +62,20 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.Paste {
+			pasted := string(msg.Runes)
+			if len(pasted) > 80 || strings.Contains(pasted, "\n") {
+				placeholder := fmt.Sprintf("[Pasted Content %d chars]", len(pasted))
+				m.pendingPastes[placeholder] = pasted
+				m.textarea, cmd = m.textarea.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(placeholder), Paste: true})
+				cmds = append(cmds, cmd)
+				return m, tea.Batch(cmds...)
+			}
+			m.textarea, cmd = m.textarea.Update(msg)
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
 		now := time.Now()
 		isBurst := false
 		if !m.lastKeystroke.IsZero() && now.Sub(m.lastKeystroke) < 25*time.Millisecond {
@@ -96,7 +112,6 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 
-			// If Tab is pressed OR (Enter is pressed AND user scrolled through suggestions)
 			if len(m.suggestions) > 0 && (!isEnter || (isEnter && m.scrolled)) {
 				val := m.textarea.Value()
 				idx := strings.LastIndexAny(val, " \n\t")
@@ -117,6 +132,12 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if isEnter {
 				val := strings.TrimSpace(m.textarea.Value())
+				
+				// Rehydrate large pastes
+				for placeholder, original := range m.pendingPastes {
+					val = strings.ReplaceAll(val, placeholder, original)
+				}
+
 				if val == "" {
 					return m, nil
 				}
